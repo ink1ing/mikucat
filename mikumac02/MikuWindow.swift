@@ -45,22 +45,27 @@ class MikuWindow: NSWindow {
         }
         
         let screenFrame = mainScreen.visibleFrame
-        let imageSize = CGSize(width: 150, height: 200)
+        let desiredSize = CGSize(width: 150, height: 200)
+        // 适配超小可见区域，避免窗口尺寸大于屏幕导致随机区间非法
+        let usedWidth = min(desiredSize.width, max(10, screenFrame.width))
+        let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
+        let imageSize = CGSize(width: usedWidth, height: usedHeight)
         
         print("屏幕可见区域: \(screenFrame)")
         
         // 紧贴屏幕右侧，无边距
         let initialX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
         
-        // 随机Y位置，确保在可见区域内（无额外边距）
+        // 随机Y位置，确保在可见区域内（无额外边距），并避免空区间
         let minY = screenFrame.minY
-        let maxY = screenFrame.maxY - imageSize.height
+        let maxYCandidate = screenFrame.maxY - imageSize.height
+        let maxY = max(minY, maxYCandidate)
         let randomY = CGFloat.random(in: minY...maxY)
         
-        let initialFrame = NSRect(x: initialX, 
-                                y: randomY, 
-                                width: imageSize.width, 
-                                height: imageSize.height)
+        let initialFrame = NSRect(x: initialX,
+                                  y: randomY,
+                                  width: imageSize.width,
+                                  height: imageSize.height)
         
         print("初始窗口位置: \(initialFrame)")
         
@@ -318,18 +323,22 @@ class MikuWindow: NSWindow {
         guard let mainScreen = NSScreen.main else { return }
         
         let screenFrame = mainScreen.visibleFrame
-        let imageSize = CGSize(width: 150, height: 200)
+        let desiredSize = CGSize(width: 150, height: 200)
+        let usedWidth = min(desiredSize.width, max(10, screenFrame.width))
+        let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
+        let imageSize = CGSize(width: usedWidth, height: usedHeight)
         
         let initialX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
         
         let minY = screenFrame.minY
-        let maxY = screenFrame.maxY - imageSize.height
+        let maxYCandidate = screenFrame.maxY - imageSize.height
+        let maxY = max(minY, maxYCandidate)
         let randomY = CGFloat.random(in: minY...maxY)
         
-        let newFrame = NSRect(x: initialX, 
-                            y: randomY, 
-                            width: imageSize.width, 
-                            height: imageSize.height)
+        let newFrame = NSRect(x: initialX,
+                              y: randomY,
+                              width: imageSize.width,
+                              height: imageSize.height)
         
         self.setFrame(newFrame, display: true, animate: true)
         setState(.idle)
