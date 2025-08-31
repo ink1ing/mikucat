@@ -53,8 +53,9 @@ class MikuWindow: NSWindow {
         
         print("屏幕可见区域: \(screenFrame)")
         
-        // 紧贴屏幕右侧，无边距
-        let initialX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
+        // 紧贴屏幕右侧，初始不越界（右移偏移在显示后再应用）
+        let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
+        let initialX = min(initialTargetX, screenFrame.maxX - imageSize.width)
         
         // 随机Y位置，确保在可见区域内（无额外边距），并避免空区间
         let minY = screenFrame.minY
@@ -328,7 +329,8 @@ class MikuWindow: NSWindow {
         let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
         let imageSize = CGSize(width: usedWidth, height: usedHeight)
         
-        let initialX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
+        let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
+        let initialX = min(initialTargetX, screenFrame.maxX - imageSize.width)
         
         let minY = screenFrame.minY
         let maxYCandidate = screenFrame.maxY - imageSize.height
