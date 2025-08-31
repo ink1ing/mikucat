@@ -5,13 +5,14 @@
 //  Created by INKLING on 8/31/25.
 //
 
-import SwiftUI
+import Cocoa
 
 @main
-struct mikumac02App: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+struct mikumac02App {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
     }
 }
