@@ -15,6 +15,9 @@ class SpaceMikuWindow: NSWindow {
     private var velocity: CGPoint = .zero
     private let speedRange: ClosedRange<CGFloat> = 160...280
     private static let defaultWindowSize: CGSize = CGSize(width: 140, height: 140)
+    private var isPaused: Bool = false
+    private var pendingSingleClick: DispatchWorkItem?
+    static let spawnRequestedNotification = Notification.Name("SpaceMikuWindow.spawnRequested")
     
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
@@ -101,11 +104,13 @@ class SpaceMikuWindow: NSWindow {
         timer = Timer.scheduledTimer(withTimeInterval: AppSettings.shared.frameInterval, repeats: true) { [weak self] _ in
             self?.tick()
         }
+        isPaused = false
     }
     
     func stop() {
         timer?.invalidate()
         timer = nil
+        isPaused = true
     }
     
     func reset() {
@@ -156,5 +161,25 @@ class SpaceMikuWindow: NSWindow {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+    
+    // 单击：暂停/继续；双击：请求分裂一个新的太空miku
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount >= 2 {
+            // 取消待执行的单击动作，触发分裂
+            pendingSingleClick?.cancel()
+            pendingSingleClick = nil
+            NotificationCenter.default.post(name: Self.spawnRequestedNotification, object: self)
+            return
+        }
+        if event.clickCount == 1 {
+            pendingSingleClick?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                if self.isPaused { self.start() } else { self.stop() }
+            }
+            pendingSingleClick = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
     }
 }

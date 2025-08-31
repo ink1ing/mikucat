@@ -7,11 +7,11 @@
 
 import Cocoa
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // 沿挂 miku 猫（重力/贴边）
     var mikuWindow: MikuWindow?
-    // 太空 miku 猫（弹跳）
-    var spaceWindow: SpaceMikuWindow?
+    // 太空 miku 猫（弹跳）—— 支持多窗口
+    var spaceWindows: [SpaceMikuWindow] = []
     
     var statusItem: NSStatusItem?
     
@@ -29,6 +29,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 创建状态栏图标
         setupStatusBar()
         
+        // 监听太空miku分裂请求
+        NotificationCenter.default.addObserver(self, selector: #selector(handleSpaceSpawnRequested(_:)), name: SpaceMikuWindow.spawnRequestedNotification, object: nil)
+        
         // 默认显示：沿挂miku猫 可见；太空miku猫默认隐藏
         showEdgeWindow()
         
@@ -38,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         hideEdgeWindow()
         hideSpaceWindow()
+        NotificationCenter.default.removeObserver(self)
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -126,16 +130,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func showSpaceWindow() {
-        guard spaceWindow == nil else { return }
-        spaceWindow = SpaceMikuWindow()
-        spaceWindow?.makeKeyAndOrderFront(nil)
-        spaceWindow?.orderFrontRegardless()
+        // 如果已存在至少一个窗口，则不重复创建
+        if spaceWindows.isEmpty {
+            spawnSpaceWindow()
+        }
         showSpaceItem?.state = .on
     }
     
     private func hideSpaceWindow() {
-        spaceWindow?.close()
-        spaceWindow = nil
+        for w in spaceWindows { w.close() }
+        spaceWindows.removeAll()
         showSpaceItem?.state = .off
     }
     
@@ -145,7 +149,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func toggleSpaceVisible(_ sender: NSMenuItem) {
-        if spaceWindow == nil { showSpaceWindow() } else { hideSpaceWindow() }
+        if spaceWindows.isEmpty { showSpaceWindow() } else { hideSpaceWindow() }
     }
     
     @objc private func resetEdge(_ sender: NSMenuItem) {
@@ -154,8 +158,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func resetSpace(_ sender: NSMenuItem) {
-        guard let window = spaceWindow else { return }
-        window.reset()
+        if spaceWindows.isEmpty { return }
+        for w in spaceWindows { w.reset() }
+    }
+
+    // MARK: - Space miku helpers
+    private func spawnSpaceWindow() {
+        let w = SpaceMikuWindow()
+        w.delegate = self
+        w.makeKeyAndOrderFront(nil)
+        w.orderFrontRegardless()
+        spaceWindows.append(w)
+        showSpaceItem?.state = .on
+    }
+    
+    @objc private func handleSpaceSpawnRequested(_ note: Notification) {
+        // 仅在太空模式可见时允许分裂
+        if showSpaceItem?.state == .on { spawnSpaceWindow() }
+    }
+    
+    // NSWindowDelegate: 窗口关闭时清理数组，避免泄漏
+    func windowWillClose(_ notification: Notification) {
+        guard let w = notification.object as? SpaceMikuWindow else { return }
+        if let idx = spaceWindows.firstIndex(where: { $0 === w }) {
+            spaceWindows.remove(at: idx)
+        }
+        if spaceWindows.isEmpty { showSpaceItem?.state = .off }
     }
     
     @objc private func selectFrameRate(_ sender: NSMenuItem) {
