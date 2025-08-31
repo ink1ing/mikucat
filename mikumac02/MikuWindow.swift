@@ -51,6 +51,8 @@ class MikuWindow: NSWindow {
             a.visibleFrame.maxX < b.visibleFrame.maxX
         }) else { return }
         let frame = targetScreen.visibleFrame
+        // 额外健壮性保护
+        guard frame.width.isFinite, frame.height.isFinite else { return }
         let desiredSize = CGSize(width: 150, height: 200)
         let usedWidth = min(desiredSize.width, max(10, frame.width))
         let usedHeight = min(desiredSize.height, max(10, frame.height))
@@ -62,8 +64,13 @@ class MikuWindow: NSWindow {
         
         let minY = frame.minY
         let maxYCandidate = frame.maxY - size.height
-        let maxY = max(minY, maxYCandidate)
-        let y = CGFloat.random(in: minY...maxY)
+        let upper = max(minY, maxYCandidate)
+        let y: CGFloat
+        if upper.isFinite, minY.isFinite, upper >= minY {
+            y = CGFloat.random(in: minY...upper)
+        } else {
+            y = minY
+        }
         
         let newFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
         print("屏幕可见区域: \(frame), 初始窗口位置: \(newFrame)")
