@@ -120,6 +120,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mikuWindow = MikuWindow()
         mikuWindow?.makeKeyAndOrderFront(nil)
         mikuWindow?.orderFrontRegardless()
+        // 确保显示后再移动到目标屏右侧
+        DispatchQueue.main.async { [weak self] in
+            self?.mikuWindow?.moveToRightEdgeWithRandomY()
+        }
         showEdgeItem?.state = .on
     }
     

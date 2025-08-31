@@ -46,7 +46,7 @@ class MikuWindow: NSWindow {
     }
 
     // 根据当前屏幕布局，将窗口移动到“目标屏”的右侧边缘，Y 随机
-    private func moveToRightEdgeWithRandomY() {
+    func moveToRightEdgeWithRandomY() {
         guard let targetScreen = NSScreen.screens.max(by: { a, b in
             a.visibleFrame.maxX < b.visibleFrame.maxX
         }) else { return }
