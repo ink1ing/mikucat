@@ -35,8 +35,11 @@ class MikuWindow: NSWindow {
     }
     
     convenience init() {
-        // 获取主屏幕的可见区域
-        guard let mainScreen = NSScreen.main else {
+        // 选择最右侧屏幕，避免多屏坐标为负导致初始越界
+        let targetScreen = NSScreen.screens.max { a, b in
+            a.visibleFrame.maxX < b.visibleFrame.maxX
+        }
+        guard let mainScreen = targetScreen else {
             self.init(contentRect: NSRect(x: 100, y: 100, width: 150, height: 200), 
                      styleMask: [.borderless], 
                      backing: .buffered, 
@@ -55,7 +58,8 @@ class MikuWindow: NSWindow {
         
         // 紧贴屏幕右侧，初始不越界（右移偏移在显示后再应用）
         let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
-        let initialX = min(initialTargetX, screenFrame.maxX - imageSize.width)
+        // 夹在 [minX, maxX - width] 范围内
+        let initialX = min(max(screenFrame.minX, initialTargetX), screenFrame.maxX - imageSize.width)
         
         // 随机Y位置，确保在可见区域内（无额外边距），并避免空区间
         let minY = screenFrame.minY
@@ -200,13 +204,15 @@ class MikuWindow: NSWindow {
 
     // 如果当前靠近屏幕右侧，则对 png2（idle）应用额外右移，以便更贴合
     private func applyRightEdgeShiftIfNeeded() {
-        guard let screen = NSScreen.main else { return }
+        guard let screen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main else { return }
         let frame = screen.visibleFrame
         var win = self.frame
         // 判断是否在右侧边缘附近（允许一定误差）
         let distanceToRight = abs(win.maxX - frame.maxX)
         if distanceToRight <= 24 { // 24像素阈值
-            let targetX = frame.maxX - win.width + Self.rightEdgeShiftForPng2
+            var targetX = frame.maxX - win.width + Self.rightEdgeShiftForPng2
+            // 再次夹取，避免超出屏幕
+            targetX = min(max(frame.minX, targetX), frame.maxX - win.width)
             if abs(win.origin.x - targetX) > 0.5 {
                 win.origin.x = targetX
                 self.setFrame(win, display: true)
@@ -228,10 +234,10 @@ class MikuWindow: NSWindow {
     }
     
     private func updateFallAnimation() {
-        guard let mainScreen = NSScreen.main else { return }
-        
+        let currentScreen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main
+        guard let screen = currentScreen else { return }
         // 使用visibleFrame确保考虑菜单栏和Dock
-        let screenFrame = mainScreen.visibleFrame
+        let screenFrame = screen.visibleFrame
         
         let deltaTime: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
         fallVelocity += gravity * deltaTime
@@ -295,7 +301,7 @@ class MikuWindow: NSWindow {
         newFrame.origin.y = screenPoint.y - dragOffset.y
         
         // 约束在可见屏幕范围内，便于“贴边”
-        if let screen = NSScreen.main {
+        if let screen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main {
             let frame = screen.visibleFrame
             newFrame.origin.x = min(max(frame.minX, newFrame.origin.x), frame.maxX - newFrame.size.width)
             newFrame.origin.y = min(max(frame.minY, newFrame.origin.y), frame.maxY - newFrame.size.height)
