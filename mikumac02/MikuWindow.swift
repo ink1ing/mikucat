@@ -35,49 +35,39 @@ class MikuWindow: NSWindow {
     }
     
     convenience init() {
-        // 选择最右侧屏幕，避免多屏坐标为负导致初始越界
-        let targetScreen = NSScreen.screens.max { a, b in
+        // 先用一个安全默认位置创建窗口，随后再根据屏幕调整到右侧
+        self.init(contentRect: NSRect(x: 100, y: 100, width: 150, height: 200),
+                  styleMask: [.borderless],
+                  backing: .buffered,
+                  defer: false)
+        DispatchQueue.main.async { [weak self] in
+            self?.moveToRightEdgeWithRandomY()
+        }
+    }
+
+    // 根据当前屏幕布局，将窗口移动到“目标屏”的右侧边缘，Y 随机
+    private func moveToRightEdgeWithRandomY() {
+        guard let targetScreen = NSScreen.screens.max(by: { a, b in
             a.visibleFrame.maxX < b.visibleFrame.maxX
-        }
-        guard let mainScreen = targetScreen else {
-            self.init(contentRect: NSRect(x: 100, y: 100, width: 150, height: 200), 
-                     styleMask: [.borderless], 
-                     backing: .buffered, 
-                     defer: false)
-            return
-        }
-        
-        let screenFrame = mainScreen.visibleFrame
+        }) else { return }
+        let frame = targetScreen.visibleFrame
         let desiredSize = CGSize(width: 150, height: 200)
-        // 适配超小可见区域，避免窗口尺寸大于屏幕导致随机区间非法
-        let usedWidth = min(desiredSize.width, max(10, screenFrame.width))
-        let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
-        let imageSize = CGSize(width: usedWidth, height: usedHeight)
+        let usedWidth = min(desiredSize.width, max(10, frame.width))
+        let usedHeight = min(desiredSize.height, max(10, frame.height))
+        let size = CGSize(width: usedWidth, height: usedHeight)
         
-        print("屏幕可见区域: \(screenFrame)")
+        // 夹在 [minX, maxX - width]
+        let targetXRaw = frame.maxX - size.width + Self.rightEdgeShiftForPng2
+        let x = min(max(frame.minX, targetXRaw), frame.maxX - size.width)
         
-        // 紧贴屏幕右侧，初始不越界（右移偏移在显示后再应用）
-        let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
-        // 夹在 [minX, maxX - width] 范围内
-        let initialX = min(max(screenFrame.minX, initialTargetX), screenFrame.maxX - imageSize.width)
-        
-        // 随机Y位置，确保在可见区域内（无额外边距），并避免空区间
-        let minY = screenFrame.minY
-        let maxYCandidate = screenFrame.maxY - imageSize.height
+        let minY = frame.minY
+        let maxYCandidate = frame.maxY - size.height
         let maxY = max(minY, maxYCandidate)
-        let randomY = CGFloat.random(in: minY...maxY)
+        let y = CGFloat.random(in: minY...maxY)
         
-        let initialFrame = NSRect(x: initialX,
-                                  y: randomY,
-                                  width: imageSize.width,
-                                  height: imageSize.height)
-        
-        print("初始窗口位置: \(initialFrame)")
-        
-        self.init(contentRect: initialFrame, 
-                 styleMask: [.borderless], 
-                 backing: .buffered, 
-                 defer: false)
+        let newFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
+        print("屏幕可见区域: \(frame), 初始窗口位置: \(newFrame)")
+        self.setFrame(newFrame, display: true)
     }
     
     private func setupWindow() {
