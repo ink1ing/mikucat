@@ -16,7 +16,7 @@ class SpaceMikuWindow: NSWindow {
     var velocity: CGPoint = .zero
     private let speedRange: ClosedRange<CGFloat> = 160...280
     private static let defaultWindowSize: CGSize = CGSize(width: 140, height: 140)
-    private var isPaused: Bool = false
+    var isPaused: Bool = false
     private var pendingSingleClick: DispatchWorkItem?
     static let spawnRequestedNotification = Notification.Name("SpaceMikuWindow.spawnRequested")
     
@@ -47,8 +47,8 @@ class SpaceMikuWindow: NSWindow {
         loadImages()
         randomizeVelocity()
         setRandomImage()
-        
-        start()
+        // 交由 AppDelegate 驱动物理更新，默认不暂停
+        isPaused = false
         NotificationCenter.default.addObserver(self, selector: #selector(handleFrameRateChanged), name: AppSettings.frameRateChangedNotification, object: nil)
     }
 
@@ -114,19 +114,8 @@ class SpaceMikuWindow: NSWindow {
         imageView.image = images[newIndex]
     }
     
-    func start() {
-        stop()
-        timer = Timer.scheduledTimer(withTimeInterval: AppSettings.shared.frameInterval, repeats: true) { [weak self] _ in
-            self?.tick()
-        }
-        isPaused = false
-    }
-    
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        isPaused = true
-    }
+    func start() { isPaused = false }
+    func stop() { isPaused = true }
     
     func reset() {
         guard let screen = NSScreen.main?.frame else { return }
@@ -137,44 +126,7 @@ class SpaceMikuWindow: NSWindow {
         setRandomImage()
     }
     
-    private func tick() {
-        // 使用窗口所在屏幕（若不可用回退主屏或任意屏）
-        let scr = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
-        guard let screen = scr else { return }
-        let bounds = screen.frame
-
-        // 基于圆心与半径的边界反弹
-        let dt: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
-        var c = center
-        c.x += velocity.x * dt
-        c.y += velocity.y * dt
-
-        var bounced = false
-        let r = radius
-        // 左右边界
-        if c.x - r <= bounds.minX {
-            c.x = bounds.minX + r
-            velocity.x = abs(velocity.x)
-            bounced = true
-        } else if c.x + r >= bounds.maxX {
-            c.x = bounds.maxX - r
-            velocity.x = -abs(velocity.x)
-            bounced = true
-        }
-        // 上下边界
-        if c.y - r <= bounds.minY {
-            c.y = bounds.minY + r
-            velocity.y = abs(velocity.y)
-            bounced = true
-        } else if c.y + r >= bounds.maxY {
-            c.y = bounds.maxY - r
-            velocity.y = -abs(velocity.y)
-            bounced = true
-        }
-
-        center = c
-        if bounced { setRandomImage() }
-    }
+    private func tick() { /* no-op now managed globally */ }
 
     @objc private func handleFrameRateChanged() {
         if timer != nil { start() }
@@ -204,19 +156,16 @@ class SpaceMikuWindow: NSWindow {
         }
     }
 
-    // 对外工具：在给定中心点与速度下放置本窗口，并保证在屏幕范围内
+    // 对外工具：在给定中心点与速度下放置本窗口
     func place(atCenter c: CGPoint, velocity v: CGPoint) {
         self.velocity = v
         self.center = c
-        // 立即夹取到当前屏幕范围内
-        let scr = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
-        if let screen = scr {
-            let b = screen.frame
-            var cc = self.center
-            let r = radius
-            cc.x = min(max(b.minX + r, cc.x), b.maxX - r)
-            cc.y = min(max(b.minY + r, cc.y), b.maxY - r)
-            self.center = cc
-        }
+    }
+
+    // 对外可用属性，用于全局物理计算
+    var bodyRadius: CGFloat { radius }
+    var centerPoint: CGPoint {
+        get { center }
+        set { center = newValue }
     }
 }

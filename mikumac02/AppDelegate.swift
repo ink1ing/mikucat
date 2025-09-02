@@ -14,6 +14,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var spaceWindows: [SpaceMikuWindow] = []
     
     var statusItem: NSStatusItem?
+    // 全局物理计时器（统一驱动太空 miku）
+    var physicsTimer: Timer?
     
     // 菜单项引用，便于更新勾选状态
     var showEdgeItem: NSMenuItem?
@@ -31,6 +33,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         // 监听太空miku分裂请求
         NotificationCenter.default.addObserver(self, selector: #selector(handleSpaceSpawnRequested(_:)), name: SpaceMikuWindow.spawnRequestedNotification, object: nil)
+        // 帧率变化时重启物理计时器
+        NotificationCenter.default.addObserver(self, selector: #selector(handleFrameRateChanged), name: AppSettings.frameRateChangedNotification, object: nil)
         
         // 默认显示：沿挂miku猫 可见；太空miku猫默认隐藏
         showEdgeWindow()
@@ -135,12 +139,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             spawnSpaceWindow()
         }
         showSpaceItem?.state = .on
+        startPhysicsTimerIfNeeded()
     }
     
     private func hideSpaceWindow() {
         for w in spaceWindows { w.close() }
         spaceWindows.removeAll()
         showSpaceItem?.state = .off
+        stopPhysicsTimerIfIdle()
     }
     
     // MARK: - 菜单动作
@@ -170,6 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.orderFrontRegardless()
         spaceWindows.append(w)
         showSpaceItem?.state = .on
+        startPhysicsTimerIfNeeded()
     }
 
     private func spawnSpaceWindow(oppositeFrom source: SpaceMikuWindow) {
@@ -202,6 +209,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.place(atCenter: spawnCenter, velocity: CGPoint(x: dir.x * speed, y: dir.y * speed))
         spaceWindows.append(w)
         showSpaceItem?.state = .on
+        startPhysicsTimerIfNeeded()
     }
     
     @objc private func handleSpaceSpawnRequested(_ note: Notification) {
@@ -220,7 +228,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let idx = spaceWindows.firstIndex(where: { $0 === w }) {
             spaceWindows.remove(at: idx)
         }
-        if spaceWindows.isEmpty { showSpaceItem?.state = .off }
+        if spaceWindows.isEmpty {
+            showSpaceItem?.state = .off
+            stopPhysicsTimerIfIdle()
+        }
     }
     
     @objc private func selectFrameRate(_ sender: NSMenuItem) {
@@ -243,5 +254,132 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @objc private func quitApplication(_ sender: NSMenuItem) {
         NSApplication.shared.terminate(self)
+    }
+
+    // MARK: - 全局物理更新（全屏+相互碰撞）
+    private func startPhysicsTimerIfNeeded() {
+        guard physicsTimer == nil, !spaceWindows.isEmpty else { return }
+        physicsTimer = Timer.scheduledTimer(timeInterval: AppSettings.shared.frameInterval, target: self, selector: #selector(tickPhysics), userInfo: nil, repeats: true)
+    }
+    
+    private func stopPhysicsTimerIfIdle() {
+        if spaceWindows.isEmpty {
+            physicsTimer?.invalidate()
+            physicsTimer = nil
+        }
+    }
+    
+    @objc private func handleFrameRateChanged() {
+        // 重启物理计时器以应用新的帧率
+        physicsTimer?.invalidate()
+        physicsTimer = nil
+        startPhysicsTimerIfNeeded()
+    }
+    
+    private func globalBounds() -> CGRect {
+        let screens = NSScreen.screens
+        if screens.isEmpty { return CGRect(x: 0, y: 0, width: 800, height: 600) }
+        var rect = screens[0].frame
+        for s in screens.dropFirst() { rect = rect.union(s.frame) }
+        return rect
+    }
+    
+    @objc private func tickPhysics() {
+        guard !spaceWindows.isEmpty else { return }
+        let dt = CGFloat(1.0 / AppSettings.shared.frameRate)
+        let bounds = globalBounds()
+
+        // 读取状态
+        let count = spaceWindows.count
+        var centers = [CGPoint](repeating: .zero, count: count)
+        var radii = [CGFloat](repeating: 0, count: count)
+        var vels = [CGPoint](repeating: .zero, count: count)
+        var paused = [Bool](repeating: false, count: count)
+        for (i, w) in spaceWindows.enumerated() {
+            centers[i] = w.centerPoint
+            radii[i] = w.bodyRadius
+            vels[i] = w.velocity
+            paused[i] = w.isPaused
+        }
+
+        // 边界积分 + 反弹
+        for i in 0..<count {
+            if paused[i] { continue }
+            var c = centers[i]
+            var v = vels[i]
+            let r = radii[i]
+            c.x += v.x * dt
+            c.y += v.y * dt
+            // 左右
+            if c.x - r <= bounds.minX {
+                c.x = bounds.minX + r
+                v.x = abs(v.x)
+            } else if c.x + r >= bounds.maxX {
+                c.x = bounds.maxX - r
+                v.x = -abs(v.x)
+            }
+            // 上下
+            if c.y - r <= bounds.minY {
+                c.y = bounds.minY + r
+                v.y = abs(v.y)
+            } else if c.y + r >= bounds.maxY {
+                c.y = bounds.maxY - r
+                v.y = -abs(v.y)
+            }
+            centers[i] = c
+            vels[i] = v
+        }
+
+        // 相互碰撞（弹性、等质量）
+        for i in 0..<count {
+            if paused[i] { continue }
+            for j in (i+1)..<count {
+                if paused[j] { continue }
+                let dx = centers[j].x - centers[i].x
+                let dy = centers[j].y - centers[i].y
+                var dist = sqrt(dx*dx + dy*dy)
+                let minDist = radii[i] + radii[j]
+                if dist < minDist {
+                    // 法向量
+                    var nx: CGFloat = 1
+                    var ny: CGFloat = 0
+                    if dist > 0.0001 { nx = dx / dist; ny = dy / dist } else {
+                        // 重合时随机一个方向
+                        let angle = CGFloat.random(in: 0..<(2 * .pi))
+                        nx = cos(angle); ny = sin(angle)
+                        dist = minDist
+                    }
+                    // 位置校正：各退让一半
+                    let overlap = minDist - dist
+                    if overlap > 0 {
+                        centers[i].x -= nx * overlap * 0.5
+                        centers[i].y -= ny * overlap * 0.5
+                        centers[j].x += nx * overlap * 0.5
+                        centers[j].y += ny * overlap * 0.5
+                    }
+                    // 速度分解到法线与切线
+                    let tx = -ny, ty = nx
+                    let v1 = vels[i], v2 = vels[j]
+                    let v1n = v1.x*nx + v1.y*ny
+                    let v1t = v1.x*tx + v1.y*ty
+                    let v2n = v2.x*nx + v2.y*ny
+                    let v2t = v2.x*tx + v2.y*ty
+                    // 等质量弹性碰撞：法向分量交换，切向不变
+                    let v1n2 = v2n
+                    let v2n2 = v1n
+                    let nv1 = CGPoint(x: v1n2*nx + v1t*tx, y: v1n2*ny + v1t*ty)
+                    let nv2 = CGPoint(x: v2n2*nx + v2t*tx, y: v2n2*ny + v2t*ty)
+                    vels[i] = nv1
+                    vels[j] = nv2
+                }
+            }
+        }
+
+        // 回写
+        for i in 0..<count {
+            let w = spaceWindows[i]
+            w.velocity = vels[i]
+            if !paused[i] { w.centerPoint = centers[i] }
+        }
     }
 }
