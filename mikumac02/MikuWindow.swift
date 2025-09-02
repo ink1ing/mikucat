@@ -49,8 +49,8 @@ class MikuWindow: NSWindow {
         // 在下一轮主队列再执行一次，确保屏幕信息已稳定
         let performMove: () -> Void = { [weak self] in
             guard let self = self else { return }
-            // 优先使用 CGDisplay 获取的右侧显示器范围，避免访问 NSScreen 引发崩溃
-            let vf = self.rightmostDisplayFrameInPoints() ?? CGRect(x: 0, y: 0, width: 800, height: 600)
+            // 使用用户选择的沿挂屏幕边界，避免与“扩展/内置屏幕”选择不一致
+            let vf = AppSettings.shared.edgeBounds()
 
             // 期望大小，并在屏幕极小或异常时进行夹取
             let desiredSize = CGSize(width: 150, height: 200)
@@ -221,11 +221,11 @@ class MikuWindow: NSWindow {
 
     // 如果当前靠近屏幕右侧，则对 png2（idle）应用额外右移，以便更贴合
     private func applyRightEdgeShiftIfNeeded() {
-        let frame = rightmostDisplayFrameInPoints() ?? CGRect(x: 0, y: 0, width: 800, height: 600)
+        let frame = AppSettings.shared.edgeBounds()
         var win = self.frame
         // 判断是否在右侧边缘附近（允许一定误差）
         let distanceToRight = abs(win.maxX - frame.maxX)
-        if distanceToRight <= 24 { // 24像素阈值
+        if distanceToRight <= 32 { // 32像素阈值，吸附更稳定
             var targetX = frame.maxX - win.width + Self.rightEdgeShiftForPng2
             // 再次夹取，避免超出屏幕
             targetX = min(max(frame.minX, targetX), frame.maxX - win.width)
@@ -326,10 +326,28 @@ class MikuWindow: NSWindow {
         if !isDragging { return }
         
         isDragging = false
-        
-        // 开始自由落体
-        print("松开鼠标，开始自由落体")
-        setState(.falling)
+        // 如果靠近右侧边缘，执行贴边吸附并保持待机；否则自由落体
+        let bounds = AppSettings.shared.edgeBounds()
+        let snapThreshold: CGFloat = 64
+        let distanceToRight = bounds.maxX - self.frame.maxX
+        if distanceToRight <= snapThreshold {
+            var f = self.frame
+            // 吸附到右边缘（带 png2 右移校正）
+            var targetX = bounds.maxX - f.size.width + Self.rightEdgeShiftForPng2
+            targetX = min(max(bounds.minX, targetX), bounds.maxX - f.size.width)
+            // 夹取 Y
+            let minY = bounds.minY
+            let maxY = bounds.maxY - f.size.height
+            f.origin.y = min(max(minY, f.origin.y), maxY)
+            f.origin.x = targetX
+            self.setFrame(f, display: true, animate: true)
+            print("靠近右侧，贴边吸附，进入待机")
+            setState(.idle)
+        } else {
+            // 开始自由落体
+            print("松开鼠标，开始自由落体")
+            setState(.falling)
+        }
     }
     
     // MARK: - 公共方法

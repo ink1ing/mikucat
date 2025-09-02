@@ -36,9 +36,9 @@ final class AppSettings {
     }
     
     // 根据 scope 计算矩形边界（合并所有符合条件的屏幕）
-    func bounds(for scope: ScreenScope) -> CGRect {
+    private func screens(for scope: ScreenScope) -> [NSScreen] {
         let screens = NSScreen.screens
-        if screens.isEmpty { return CGRect(x: 0, y: 0, width: 800, height: 600) }
+        if screens.isEmpty { return [] }
         func isBuiltin(_ s: NSScreen) -> Bool {
             if let num = s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
                 let did = CGDirectDisplayID(num.uint32Value)
@@ -46,20 +46,32 @@ final class AppSettings {
             }
             return false
         }
-        let group: [NSScreen]
         switch scope {
         case .builtin:
-            group = screens.filter { isBuiltin($0) }
-            if group.isEmpty { return NSScreen.main?.frame ?? screens[0].frame }
+            let group = screens.filter { isBuiltin($0) }
+            return group.isEmpty ? (NSScreen.main.map { [$0] } ?? [screens[0]]) : group
         case .external:
-            group = screens.filter { !isBuiltin($0) }
-            if group.isEmpty { return (NSScreen.main?.frame ?? screens[0].frame) }
+            let group = screens.filter { !isBuiltin($0) }
+            return group.isEmpty ? (NSScreen.main.map { [$0] } ?? [screens[0]]) : group
         }
-        var rect = group[0].frame
+    }
+
+    // union of frames
+    func bounds(for scope: ScreenScope) -> CGRect {
+        let group = screens(for: scope)
+        guard let first = group.first else { return CGRect(x: 0, y: 0, width: 800, height: 600) }
+        var rect = first.frame
         for s in group.dropFirst() { rect = rect.union(s.frame) }
         return rect
     }
-    
+
+    // 沿挂使用 frame 范围；太空模式使用 visibleFrame（避开菜单栏/坞）
     func edgeBounds() -> CGRect { bounds(for: edgeScreenScope) }
-    func spaceBounds() -> CGRect { bounds(for: spaceScreenScope) }
+    func spaceBounds() -> CGRect {
+        let group = screens(for: spaceScreenScope)
+        guard let first = group.first else { return CGRect(x: 0, y: 0, width: 800, height: 600) }
+        var rect = first.visibleFrame
+        for s in group.dropFirst() { rect = rect.union(s.visibleFrame) }
+        return rect
+    }
 }

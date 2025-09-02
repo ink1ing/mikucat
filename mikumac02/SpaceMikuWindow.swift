@@ -113,6 +113,11 @@ class SpaceMikuWindow: NSWindow {
         currentImageIndex = newIndex
         imageView.image = images[newIndex]
     }
+
+    // 外部触发：发生碰撞/反弹时切换形象
+    func updateImageForImpact() {
+        setRandomImage()
+    }
     
     func start() { isPaused = false }
     func stop() { isPaused = true }

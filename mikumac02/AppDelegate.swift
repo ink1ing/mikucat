@@ -206,6 +206,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
         w.orderFrontRegardless()
+        // 确保初始位置在所选空间范围内
+        let b = spaceBounds()
+        var c = CGPoint(x: w.frame.midX, y: w.frame.midY)
+        let r = min(w.frame.width, w.frame.height) * 0.5
+        c.x = min(max(b.minX + r, c.x), b.maxX - r)
+        c.y = min(max(b.minY + r, c.y), b.maxY - r)
+        w.centerPoint = c
         spaceWindows.append(w)
         showSpaceItem?.state = .on
         startPhysicsTimerIfNeeded()
@@ -238,7 +245,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.makeKeyAndOrderFront(nil)
         w.orderFrontRegardless()
         // 设置位置与速度，并夹取到屏幕内
-        w.place(atCenter: spawnCenter, velocity: CGPoint(x: dir.x * speed, y: dir.y * speed))
+        let b = spaceBounds()
+        let sr = min(w.frame.width, w.frame.height) * 0.5
+        var sc = spawnCenter
+        sc.x = min(max(b.minX + sr, sc.x), b.maxX - sr)
+        sc.y = min(max(b.minY + sr, sc.y), b.maxY - sr)
+        w.place(atCenter: sc, velocity: CGPoint(x: dir.x * speed, y: dir.y * speed))
         spaceWindows.append(w)
         showSpaceItem?.state = .on
         startPhysicsTimerIfNeeded()
@@ -355,6 +367,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard !spaceWindows.isEmpty else { return }
         let dt = CGFloat(1.0 / AppSettings.shared.frameRate)
         let bounds = spaceBounds()
+        // 为避免沿边缘“走线”（垂直或水平分量接近 0 ），对速度分量设置一个最小阈值
+        let minComponentSpeed: CGFloat = 80
 
         // 读取状态
         let count = spaceWindows.count
@@ -362,6 +376,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var radii = [CGFloat](repeating: 0, count: count)
         var vels = [CGPoint](repeating: .zero, count: count)
         var paused = [Bool](repeating: false, count: count)
+        var hitWall = [Bool](repeating: false, count: count)
+        var hitOther = [Bool](repeating: false, count: count)
         for (i, w) in spaceWindows.enumerated() {
             centers[i] = w.centerPoint
             radii[i] = w.bodyRadius
@@ -375,23 +391,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             var c = centers[i]
             var v = vels[i]
             let r = radii[i]
+            let eps: CGFloat = 1.0
             c.x += v.x * dt
             c.y += v.y * dt
             // 左右
             if c.x - r <= bounds.minX {
-                c.x = bounds.minX + r
-                v.x = abs(v.x)
+                c.x = bounds.minX + r + eps
+                // 反弹 + 保证水平分量不至于过小
+                v.x = max(abs(v.x), minComponentSpeed)
+                hitWall[i] = true
             } else if c.x + r >= bounds.maxX {
-                c.x = bounds.maxX - r
-                v.x = -abs(v.x)
+                c.x = bounds.maxX - r - eps
+                v.x = -max(abs(v.x), minComponentSpeed)
+                hitWall[i] = true
             }
             // 上下
             if c.y - r <= bounds.minY {
-                c.y = bounds.minY + r
-                v.y = abs(v.y)
+                c.y = bounds.minY + r + eps
+                v.y = max(abs(v.y), minComponentSpeed)
+                hitWall[i] = true
             } else if c.y + r >= bounds.maxY {
-                c.y = bounds.maxY - r
-                v.y = -abs(v.y)
+                c.y = bounds.maxY - r - eps
+                v.y = -max(abs(v.y), minComponentSpeed)
+                hitWall[i] = true
             }
             centers[i] = c
             vels[i] = v
@@ -436,10 +458,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     let v2n2 = v1n
                     let nv1 = CGPoint(x: v1n2*nx + v1t*tx, y: v1n2*ny + v1t*ty)
                     let nv2 = CGPoint(x: v2n2*nx + v2t*tx, y: v2n2*ny + v2t*ty)
-                    vels[i] = nv1
-                    vels[j] = nv2
+                    // 防止生成近零分量：维持每个轴的最小速度，方向不变
+                    func clampComponent(_ v: CGPoint) -> CGPoint {
+                        var out = v
+                        if abs(out.x) < minComponentSpeed { out.x = (out.x >= 0 ? 1 : -1) * minComponentSpeed }
+                        if abs(out.y) < minComponentSpeed { out.y = (out.y >= 0 ? 1 : -1) * minComponentSpeed }
+                        return out
+                    }
+                    vels[i] = clampComponent(nv1)
+                    vels[j] = clampComponent(nv2)
+                    hitOther[i] = true
+                    hitOther[j] = true
                 }
             }
+        }
+
+        // 再进行一次边界校正，避免碰撞分离把物体推到边界之外
+        for i in 0..<count {
+            if paused[i] { continue }
+            var c = centers[i]
+            var v = vels[i]
+            let r = radii[i]
+            let eps: CGFloat = 1.0
+            if c.x - r < bounds.minX { c.x = bounds.minX + r + eps; v.x = max(abs(v.x), minComponentSpeed) }
+            if c.x + r > bounds.maxX { c.x = bounds.maxX - r - eps; v.x = -max(abs(v.x), minComponentSpeed) }
+            if c.y - r < bounds.minY { c.y = bounds.minY + r + eps; v.y = max(abs(v.y), minComponentSpeed) }
+            if c.y + r > bounds.maxY { c.y = bounds.maxY - r - eps; v.y = -max(abs(v.y), minComponentSpeed) }
+            centers[i] = c
+            vels[i] = v
         }
 
         // 回写
@@ -447,6 +493,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let w = spaceWindows[i]
             w.velocity = vels[i]
             if !paused[i] { w.centerPoint = centers[i] }
+            if (hitWall[i] || hitOther[i]) {
+                w.updateImageForImpact()
+            }
         }
     }
 }
