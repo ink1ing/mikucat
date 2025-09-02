@@ -180,8 +180,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let minSpeed: CGFloat = 120
         let speed = max(minSpeed, hypot(v.x, v.y))
         if speed < 1 { // 极端情况
-            let angles: [CGFloat] = [0, .pi/4, .pi/2, 3*.pi/4, .pi, -(.pi/2)]
-            let a = angles.randomElement() ?? .pi/3
+            let angles: [CGFloat] = [0, CGFloat.pi/4, CGFloat.pi/2, 3 * CGFloat.pi / 4, CGFloat.pi, -CGFloat.pi/2]
+            let a = angles.randomElement() ?? (CGFloat.pi/3)
             v = CGPoint(x: cos(a) * minSpeed, y: sin(a) * minSpeed)
         }
         // 反向速度，保留模长

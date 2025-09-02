@@ -18,36 +18,6 @@
             endingLineNumber = "55"
             landmarkName = "moveToRightEdgeWithRandomY()"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "4DB68A8C-C053-4298-9470-A8410A1344A6 - d26d0ed9f9d1cfae"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 () -&gt; () in mikumac02.MikuWindow.moveToRightEdgeWithRandomY() -&gt; ()"
-                  moduleName = "mikumac02.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/inkling/Desktop/mikumac/mikumac02/mikumac02/MikuWindow.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "56"
-                  endingLineNumber = "56">
-               </Location>
-               <Location
-                  uuid = "4DB68A8C-C053-4298-9470-A8410A1344A6 - d26d0ed9f9d1cc4d"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 () -&gt; () in mikumac02.MikuWindow.moveToRightEdgeWithRandomY() -&gt; ()"
-                  moduleName = "mikumac02.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/inkling/Desktop/mikumac/mikumac02/mikumac02/MikuWindow.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "57"
-                  endingLineNumber = "57">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>
