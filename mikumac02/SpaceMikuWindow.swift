@@ -25,7 +25,7 @@ class SpaceMikuWindow: NSWindow {
     }
     
     convenience init() {
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        let screen = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
         let size = Self.defaultWindowSize
         let startX = screen.midX - size.width/2
         let startY = screen.midY - size.height/2
@@ -114,7 +114,7 @@ class SpaceMikuWindow: NSWindow {
     }
     
     func reset() {
-        guard let screen = NSScreen.main?.visibleFrame else { return }
+        guard let screen = NSScreen.main?.frame else { return }
         let size = Self.defaultWindowSize
         let newOrigin = CGPoint(x: screen.midX - size.width/2, y: screen.midY - size.height/2)
         setFrame(NSRect(origin: newOrigin, size: size), display: true, animate: true)
@@ -123,7 +123,7 @@ class SpaceMikuWindow: NSWindow {
     }
     
     private func tick() {
-        guard let screen = NSScreen.main?.visibleFrame else { return }
+        guard let screen = NSScreen.main?.frame else { return }
         let dt: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
         var frame = self.frame
         frame.origin.x += velocity.x * dt

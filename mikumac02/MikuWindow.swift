@@ -6,6 +6,7 @@
 //
 
 import Cocoa
+import CoreGraphics
 
 enum MikuState {
     case idle          // 待机状态 - miku2.png
@@ -40,41 +41,60 @@ class MikuWindow: NSWindow {
                   styleMask: [.borderless],
                   backing: .buffered,
                   defer: false)
-        DispatchQueue.main.async { [weak self] in
-            self?.moveToRightEdgeWithRandomY()
-        }
+        // 保持默认位置，避免部分环境在计算屏幕信息时崩溃
     }
 
     // 根据当前屏幕布局，将窗口移动到“目标屏”的右侧边缘，Y 随机
     func moveToRightEdgeWithRandomY() {
-        guard let targetScreen = NSScreen.screens.max(by: { a, b in
-            a.visibleFrame.maxX < b.visibleFrame.maxX
-        }) else { return }
-        let frame = targetScreen.visibleFrame
-        // 额外健壮性保护
-        guard frame.width.isFinite, frame.height.isFinite else { return }
-        let desiredSize = CGSize(width: 150, height: 200)
-        let usedWidth = min(desiredSize.width, max(10, frame.width))
-        let usedHeight = min(desiredSize.height, max(10, frame.height))
-        let size = CGSize(width: usedWidth, height: usedHeight)
-        
-        // 夹在 [minX, maxX - width]
-        let targetXRaw = frame.maxX - size.width + Self.rightEdgeShiftForPng2
-        let x = min(max(frame.minX, targetXRaw), frame.maxX - size.width)
-        
-        let minY = frame.minY
-        let maxYCandidate = frame.maxY - size.height
-        let upper = max(minY, maxYCandidate)
-        let y: CGFloat
-        if upper.isFinite, minY.isFinite, upper >= minY {
-            y = CGFloat.random(in: minY...upper)
-        } else {
-            y = minY
+        // 在下一轮主队列再执行一次，确保屏幕信息已稳定
+        let performMove: () -> Void = { [weak self] in
+            guard let self = self else { return }
+            // 优先使用 CGDisplay 获取的右侧显示器范围，避免访问 NSScreen 引发崩溃
+            let vf = self.rightmostDisplayFrameInPoints() ?? CGRect(x: 0, y: 0, width: 800, height: 600)
+
+            // 期望大小，并在屏幕极小或异常时进行夹取
+            let desiredSize = CGSize(width: 150, height: 200)
+            let usedWidth = min(desiredSize.width, max(10, vf.width))
+            let usedHeight = min(desiredSize.height, max(10, vf.height))
+            let size = CGSize(width: usedWidth, height: usedHeight)
+
+            // X：贴近右侧再夹取，防止越界
+            let targetXRaw = vf.maxX - size.width + Self.rightEdgeShiftForPng2
+            let x = min(max(vf.minX, targetXRaw), vf.maxX - size.width)
+
+            // Y：在 [minY, maxY - height] 间随机，若无有效范围则取 minY
+            let lowerY = vf.minY
+            let upperCandidate = vf.maxY - size.height
+            let upperY = max(lowerY, upperCandidate)
+            let y: CGFloat = (upperY > lowerY) ? CGFloat.random(in: lowerY...upperY) : lowerY
+
+            let newFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
+            print("屏幕可见区域: \(vf), 初始窗口位置: \(newFrame)")
+            self.setFrame(newFrame, display: true)
         }
-        
-        let newFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
-        print("屏幕可见区域: \(frame), 初始窗口位置: \(newFrame)")
-        self.setFrame(newFrame, display: true)
+        if Thread.isMainThread {
+            DispatchQueue.main.async(execute: performMove)
+        } else {
+            DispatchQueue.main.async(execute: performMove)
+        }
+    }
+
+    // 使用 CoreGraphics 获取最右侧显示器的像素边界，并按窗口的 backingScaleFactor 转为点坐标
+    private func rightmostDisplayFrameInPoints() -> CGRect? {
+        var count: UInt32 = 0
+        var err = CGGetActiveDisplayList(0, nil, &count)
+        if err != .success { return nil }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        err = CGGetActiveDisplayList(count, &ids, &count)
+        if err != .success || ids.isEmpty { return nil }
+        // 选择 maxX 最大的显示器
+        let rectPixels = ids.map { CGDisplayBounds($0) }.max(by: { $0.maxX < $1.maxX })
+        guard let rp = rectPixels else { return nil }
+        let scale = self.backingScaleFactor > 0 ? self.backingScaleFactor : 2.0
+        return CGRect(x: rp.origin.x / scale,
+                      y: rp.origin.y / scale,
+                      width: rp.size.width / scale,
+                      height: rp.size.height / scale)
     }
     
     private func setupWindow() {
@@ -201,8 +221,7 @@ class MikuWindow: NSWindow {
 
     // 如果当前靠近屏幕右侧，则对 png2（idle）应用额外右移，以便更贴合
     private func applyRightEdgeShiftIfNeeded() {
-        guard let screen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main else { return }
-        let frame = screen.visibleFrame
+        let frame = rightmostDisplayFrameInPoints() ?? CGRect(x: 0, y: 0, width: 800, height: 600)
         var win = self.frame
         // 判断是否在右侧边缘附近（允许一定误差）
         let distanceToRight = abs(win.maxX - frame.maxX)
@@ -231,10 +250,10 @@ class MikuWindow: NSWindow {
     }
     
     private func updateFallAnimation() {
-        let currentScreen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main
+        let currentScreen = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main
         guard let screen = currentScreen else { return }
-        // 使用visibleFrame确保考虑菜单栏和Dock
-        let screenFrame = screen.visibleFrame
+        // 使用 frame，避免个别环境访问 visibleFrame 崩溃
+        let screenFrame = screen.frame
         
         let deltaTime: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
         fallVelocity += gravity * deltaTime
@@ -297,9 +316,9 @@ class MikuWindow: NSWindow {
         newFrame.origin.x = screenPoint.x - dragOffset.x
         newFrame.origin.y = screenPoint.y - dragOffset.y
         
-        // 约束在可见屏幕范围内，便于“贴边”
-        if let screen = self.screen ?? NSScreen.screens.first(where: { $0.visibleFrame.intersects(self.frame) }) ?? NSScreen.main {
-            let frame = screen.visibleFrame
+        // 约束在屏幕范围内（使用 frame 以避免 visibleFrame 崩溃）
+        if let screen = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main {
+            let frame = screen.frame
             newFrame.origin.x = min(max(frame.minX, newFrame.origin.x), frame.maxX - newFrame.size.width)
             newFrame.origin.y = min(max(frame.minY, newFrame.origin.y), frame.maxY - newFrame.size.height)
         }
@@ -326,7 +345,8 @@ class MikuWindow: NSWindow {
         // 重新使用初始化时的位置计算逻辑
         guard let mainScreen = NSScreen.main else { return }
         
-        let screenFrame = mainScreen.visibleFrame
+        // 使用 frame，避免个别环境访问 visibleFrame 崩溃
+        let screenFrame = mainScreen.frame
         let desiredSize = CGSize(width: 150, height: 200)
         let usedWidth = min(desiredSize.width, max(10, screenFrame.width))
         let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
