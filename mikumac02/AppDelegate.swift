@@ -171,10 +171,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         spaceWindows.append(w)
         showSpaceItem?.state = .on
     }
+
+    private func spawnSpaceWindow(oppositeFrom source: SpaceMikuWindow) {
+        // 基于源窗口位置和速度，生成一个反向运动的新窗口
+        let srcCenter = CGPoint(x: source.frame.midX, y: source.frame.midY)
+        var v = source.velocity
+        // 若速度过小则随机化，防止停在边缘只沿一条边移动
+        let minSpeed: CGFloat = 120
+        let speed = max(minSpeed, hypot(v.x, v.y))
+        if speed < 1 { // 极端情况
+            let angles: [CGFloat] = [0, .pi/4, .pi/2, 3*.pi/4, .pi, -(.pi/2)]
+            let a = angles.randomElement() ?? .pi/3
+            v = CGPoint(x: cos(a) * minSpeed, y: sin(a) * minSpeed)
+        }
+        // 反向速度，保留模长
+        let inv = CGPoint(x: -v.x, y: -v.y)
+        // 稍微偏移出生点，避免完全重叠
+        let offsetScale: CGFloat = 1.1
+        let r = min(source.frame.width, source.frame.height) * 0.5
+        let offMag = r * offsetScale
+        let len = max(1, hypot(inv.x, inv.y))
+        let dir = CGPoint(x: inv.x/len, y: inv.y/len)
+        let spawnCenter = CGPoint(x: srcCenter.x + dir.x * offMag, y: srcCenter.y + dir.y * offMag)
+
+        let w = SpaceMikuWindow()
+        w.delegate = self
+        w.makeKeyAndOrderFront(nil)
+        w.orderFrontRegardless()
+        // 设置位置与速度，并夹取到屏幕内
+        w.place(atCenter: spawnCenter, velocity: CGPoint(x: dir.x * speed, y: dir.y * speed))
+        spaceWindows.append(w)
+        showSpaceItem?.state = .on
+    }
     
     @objc private func handleSpaceSpawnRequested(_ note: Notification) {
         // 仅在太空模式可见时允许分裂
-        if showSpaceItem?.state == .on { spawnSpaceWindow() }
+        guard showSpaceItem?.state == .on else { return }
+        if let src = note.object as? SpaceMikuWindow {
+            spawnSpaceWindow(oppositeFrom: src)
+        } else {
+            spawnSpaceWindow()
+        }
     }
     
     // NSWindowDelegate: 窗口关闭时清理数组，避免泄漏

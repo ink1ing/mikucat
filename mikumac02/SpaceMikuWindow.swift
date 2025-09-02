@@ -12,7 +12,8 @@ class SpaceMikuWindow: NSWindow {
     private var images: [NSImage] = []
     private var currentImageIndex: Int = 0
     private var timer: Timer?
-    private var velocity: CGPoint = .zero
+    // 公开速度用于分裂方向控制
+    var velocity: CGPoint = .zero
     private let speedRange: ClosedRange<CGFloat> = 160...280
     private static let defaultWindowSize: CGSize = CGSize(width: 140, height: 140)
     private var isPaused: Bool = false
@@ -87,6 +88,20 @@ class SpaceMikuWindow: NSWindow {
         if abs(vy) < 80 { vy = vy < 0 ? -120 : 120 }
         velocity = CGPoint(x: vx, y: vy)
     }
+
+    // 以当前贴图尺寸作为“碰撞半径”的直径，使用圆形体积
+    private var radius: CGFloat {
+        let s = self.frame.size
+        return min(s.width, s.height) * 0.5
+    }
+    private var center: CGPoint {
+        get { CGPoint(x: frame.midX, y: frame.midY) }
+        set {
+            let size = frame.size
+            let origin = CGPoint(x: newValue.x - size.width/2, y: newValue.y - size.height/2)
+            setFrame(NSRect(origin: origin, size: size), display: true)
+        }
+    }
     
     private func setRandomImage() {
         guard !images.isEmpty else { return }
@@ -123,35 +138,41 @@ class SpaceMikuWindow: NSWindow {
     }
     
     private func tick() {
-        guard let screen = NSScreen.main?.frame else { return }
+        // 使用窗口所在屏幕（若不可用回退主屏或任意屏）
+        let scr = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
+        guard let screen = scr else { return }
+        let bounds = screen.frame
+
+        // 基于圆心与半径的边界反弹
         let dt: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
-        var frame = self.frame
-        frame.origin.x += velocity.x * dt
-        frame.origin.y += velocity.y * dt
-        
+        var c = center
+        c.x += velocity.x * dt
+        c.y += velocity.y * dt
+
         var bounced = false
-        // Left/Right
-        if frame.minX <= screen.minX {
-            frame.origin.x = screen.minX
+        let r = radius
+        // 左右边界
+        if c.x - r <= bounds.minX {
+            c.x = bounds.minX + r
             velocity.x = abs(velocity.x)
             bounced = true
-        } else if frame.maxX >= screen.maxX {
-            frame.origin.x = screen.maxX - frame.size.width
+        } else if c.x + r >= bounds.maxX {
+            c.x = bounds.maxX - r
             velocity.x = -abs(velocity.x)
             bounced = true
         }
-        // Bottom/Top
-        if frame.minY <= screen.minY {
-            frame.origin.y = screen.minY
+        // 上下边界
+        if c.y - r <= bounds.minY {
+            c.y = bounds.minY + r
             velocity.y = abs(velocity.y)
             bounced = true
-        } else if frame.maxY >= screen.maxY {
-            frame.origin.y = screen.maxY - frame.size.height
+        } else if c.y + r >= bounds.maxY {
+            c.y = bounds.maxY - r
             velocity.y = -abs(velocity.y)
             bounced = true
         }
-        
-        setFrame(frame, display: true)
+
+        center = c
         if bounced { setRandomImage() }
     }
 
@@ -180,6 +201,22 @@ class SpaceMikuWindow: NSWindow {
             }
             pendingSingleClick = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
+    }
+
+    // 对外工具：在给定中心点与速度下放置本窗口，并保证在屏幕范围内
+    func place(atCenter c: CGPoint, velocity v: CGPoint) {
+        self.velocity = v
+        self.center = c
+        // 立即夹取到当前屏幕范围内
+        let scr = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
+        if let screen = scr {
+            let b = screen.frame
+            var cc = self.center
+            let r = radius
+            cc.x = min(max(b.minX + r, cc.x), b.maxX - r)
+            cc.y = min(max(b.minY + r, cc.y), b.maxY - r)
+            self.center = cc
         }
     }
 }
