@@ -23,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var frameRateMenuItems: [NSMenuItem] = []
     var edgeScopeMenuItems: [NSMenuItem] = []
     var spaceScopeMenuItems: [NSMenuItem] = []
+    var prefsWindowController: PreferencesWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("应用程序启动完成...")
@@ -133,6 +134,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         resetSpace.target = self
         menu.addItem(resetSpace)
         
+        // 偏好设置
+        let prefsItem = NSMenuItem(title: "偏好设置…", action: #selector(openPreferences(_:)), keyEquivalent: ",")
+        prefsItem.target = self
+        menu.addItem(prefsItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // 关于菜单项
@@ -156,6 +162,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mikuWindow = MikuWindow()
         mikuWindow?.makeKeyAndOrderFront(nil)
         mikuWindow?.orderFrontRegardless()
+        // 首次显示后，自动贴到用户选择的“沿挂屏幕”右侧
+        DispatchQueue.main.async { [weak self] in
+            self?.mikuWindow?.moveToRightEdgeWithRandomY()
+        }
         showEdgeItem?.state = .on
     }
     
@@ -335,6 +345,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.runModal()
     }
     
+    @objc private func openPreferences(_ sender: NSMenuItem) {
+        if prefsWindowController == nil { prefsWindowController = PreferencesWindowController() }
+        prefsWindowController?.showWindow(nil)
+        prefsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
     @objc private func quitApplication(_ sender: NSMenuItem) {
         NSApplication.shared.terminate(self)
     }
@@ -369,6 +386,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let bounds = spaceBounds()
         // 为避免沿边缘“走线”（垂直或水平分量接近 0 ），对速度分量设置一个最小阈值
         let minComponentSpeed: CGFloat = 80
+        let e = AppSettings.shared.spaceRestitution
+        let g = AppSettings.shared.spaceGravity
 
         // 读取状态
         let count = spaceWindows.count
@@ -391,6 +410,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             var c = centers[i]
             var v = vels[i]
             let r = radii[i]
+            // 重力：向下（减少 y 速度）
+            if g != 0 { v.y -= g * dt }
             let eps: CGFloat = 1.0
             c.x += v.x * dt
             c.y += v.y * dt
@@ -398,21 +419,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if c.x - r <= bounds.minX {
                 c.x = bounds.minX + r + eps
                 // 反弹 + 保证水平分量不至于过小
-                v.x = max(abs(v.x), minComponentSpeed)
+                let newMag = max(abs(v.x) * e, minComponentSpeed)
+                v.x = newMag
                 hitWall[i] = true
             } else if c.x + r >= bounds.maxX {
                 c.x = bounds.maxX - r - eps
-                v.x = -max(abs(v.x), minComponentSpeed)
+                let newMag = max(abs(v.x) * e, minComponentSpeed)
+                v.x = -newMag
                 hitWall[i] = true
             }
             // 上下
             if c.y - r <= bounds.minY {
                 c.y = bounds.minY + r + eps
-                v.y = max(abs(v.y), minComponentSpeed)
+                let newMag = max(abs(v.y) * e, minComponentSpeed)
+                v.y = newMag
                 hitWall[i] = true
             } else if c.y + r >= bounds.maxY {
                 c.y = bounds.maxY - r - eps
-                v.y = -max(abs(v.y), minComponentSpeed)
+                let newMag = max(abs(v.y) * e, minComponentSpeed)
+                v.y = -newMag
                 hitWall[i] = true
             }
             centers[i] = c
@@ -453,9 +478,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     let v1t = v1.x*tx + v1.y*ty
                     let v2n = v2.x*nx + v2.y*ny
                     let v2t = v2.x*tx + v2.y*ty
-                    // 等质量弹性碰撞：法向分量交换，切向不变
-                    let v1n2 = v2n
-                    let v2n2 = v1n
+                    // 等质量，系数 e 的碰撞：
+                    // v1n' = (u1 + u2 - e*(u1 - u2))/2
+                    // v2n' = (u1 + u2 + e*(u1 - u2))/2
+                    let u1 = v1n, u2 = v2n
+                    let v1n2 = (u1 + u2 - e*(u1 - u2)) * 0.5
+                    let v2n2 = (u1 + u2 + e*(u1 - u2)) * 0.5
                     let nv1 = CGPoint(x: v1n2*nx + v1t*tx, y: v1n2*ny + v1t*ty)
                     let nv2 = CGPoint(x: v2n2*nx + v2t*tx, y: v2n2*ny + v2t*ty)
                     // 防止生成近零分量：维持每个轴的最小速度，方向不变

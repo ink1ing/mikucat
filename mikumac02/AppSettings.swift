@@ -13,6 +13,7 @@ final class AppSettings {
     static let shared = AppSettings()
     static let frameRateChangedNotification = Notification.Name("AppSettings.frameRateChanged")
     static let screenScopeChangedNotification = Notification.Name("AppSettings.screenScopeChanged")
+    static let physicsParamsChangedNotification = Notification.Name("AppSettings.physicsParamsChanged")
 
     // Default 60 FPS
     var frameRate: Double = 60 {
@@ -30,9 +31,22 @@ final class AppSettings {
     // 沿挂/太空分别选择屏幕范围
     var edgeScreenScope: ScreenScope = .builtin { didSet { notifyScreenScopeChange() } }
     var spaceScreenScope: ScreenScope = .builtin { didSet { notifyScreenScopeChange() } }
+
+    // MARK: - 物理参数（可调）
+    // 沿挂：默认重力 500，下落无弹力（0 表示不弹）
+    var edgeGravity: CGFloat = 500 { didSet { notifyPhysicsChange(oldValue != edgeGravity) } }
+    var edgeRestitution: CGFloat = 0 { didSet { edgeRestitution = max(0, min(1, edgeRestitution)); notifyPhysicsChange(true) } }
+    // 太空：默认重力 0（无重力），弹力 1（完全弹性）
+    var spaceGravity: CGFloat = 0 { didSet { notifyPhysicsChange(oldValue != spaceGravity) } }
+    var spaceRestitution: CGFloat = 1 { didSet { spaceRestitution = max(0, min(1, spaceRestitution)); notifyPhysicsChange(true) } }
     
     private func notifyScreenScopeChange() {
         NotificationCenter.default.post(name: AppSettings.screenScopeChangedNotification, object: self)
+    }
+    private func notifyPhysicsChange(_ changed: Bool) {
+        if changed {
+            NotificationCenter.default.post(name: AppSettings.physicsParamsChangedNotification, object: self)
+        }
     }
     
     // 根据 scope 计算矩形边界（合并所有符合条件的屏幕）

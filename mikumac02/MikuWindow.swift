@@ -22,7 +22,6 @@ class MikuWindow: NSWindow {
     private var dragOffset: NSPoint = NSPoint.zero
     private var fallAnimationTimer: Timer?
     private var fallVelocity: CGFloat = 0
-    private let gravity: CGFloat = 500 // 重力加速度
     private static let rightEdgeShiftForPng2: CGFloat = 12 // png2 靠右时向右偏移
     
     // Miku图片资源
@@ -41,7 +40,7 @@ class MikuWindow: NSWindow {
                   styleMask: [.borderless],
                   backing: .buffered,
                   defer: false)
-        // 保持默认位置，避免部分环境在计算屏幕信息时崩溃
+        // 首次显示后会自动吸附到选中屏幕的右侧
     }
 
     // 根据当前屏幕布局，将窗口移动到“目标屏”的右侧边缘，Y 随机
@@ -124,8 +123,9 @@ class MikuWindow: NSWindow {
         
         print("窗口设置完成，当前frame: \(self.frame)")
 
-        // 监听全局帧率变化
+        // 监听全局帧率与物理参数变化
         NotificationCenter.default.addObserver(self, selector: #selector(handleFrameRateChanged), name: AppSettings.frameRateChangedNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePhysicsParamsChanged), name: AppSettings.physicsParamsChangedNotification, object: nil)
     }
     
     // 重写这些方法来修复焦点问题
@@ -254,18 +254,34 @@ class MikuWindow: NSWindow {
         let screenFrame = AppSettings.shared.edgeBounds()
         
         let deltaTime: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
-        fallVelocity += gravity * deltaTime
+        // 重力向下（减少 y），这里用正值重力
+        fallVelocity += AppSettings.shared.edgeGravity * deltaTime
         
         var newFrame = self.frame
         newFrame.origin.y -= fallVelocity * deltaTime
         
-        // 检查是否碰撞到屏幕底部（使用visibleFrame的底部）
+        // 检查是否碰撞到屏幕底部
         if newFrame.origin.y <= screenFrame.minY {
             newFrame.origin.y = screenFrame.minY
-            self.setFrame(newFrame, display: true)
-            print("Miku碰撞地面，切换到落地状态")
-            setState(.landed)
-            return
+            // 弹力（0..1），0 表示不弹直接落地
+            let e = AppSettings.shared.edgeRestitution
+            if e > 0 {
+                // 反向并按弹力缩放；若过小则直接落地
+                fallVelocity = -fallVelocity * e
+                let minBounceSpeed: CGFloat = 90
+                if abs(fallVelocity) < minBounceSpeed {
+                    self.setFrame(newFrame, display: true)
+                    setState(.landed)
+                    return
+                }
+                // 否则继续弹跳
+                self.setFrame(newFrame, display: true)
+                return
+            } else {
+                self.setFrame(newFrame, display: true)
+                setState(.landed)
+                return
+            }
         }
         
         self.setFrame(newFrame, display: true)
@@ -276,6 +292,10 @@ class MikuWindow: NSWindow {
             stopFallAnimation()
             startFallAnimation()
         }
+    }
+
+    @objc private func handlePhysicsParamsChanged() {
+        // 无需特别处理，下一帧会用新参数；若在下落中保持计时器即可
     }
 
     deinit {
