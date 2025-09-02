@@ -21,6 +21,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var showEdgeItem: NSMenuItem?
     var showSpaceItem: NSMenuItem?
     var frameRateMenuItems: [NSMenuItem] = []
+    var edgeScopeMenuItems: [NSMenuItem] = []
+    var spaceScopeMenuItems: [NSMenuItem] = []
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("应用程序启动完成...")
@@ -93,6 +95,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rateRoot.submenu = rateMenu
         menu.addItem(rateRoot)
         
+        // 屏幕范围：沿挂 miku 猫
+        let edgeScopeRoot = NSMenuItem(title: "沿挂屏幕", action: nil, keyEquivalent: "")
+        let edgeScopeMenu = NSMenu()
+        let edgeScopes: [(String, AppSettings.ScreenScope)] = [("内置屏幕", .builtin), ("扩展屏幕", .external)]
+        for (title, scope) in edgeScopes {
+            let item = NSMenuItem(title: title, action: #selector(selectEdgeScope(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = scope.rawValue
+            if AppSettings.shared.edgeScreenScope == scope { item.state = .on }
+            edgeScopeMenu.addItem(item)
+            edgeScopeMenuItems.append(item)
+        }
+        edgeScopeRoot.submenu = edgeScopeMenu
+        menu.addItem(edgeScopeRoot)
+
+        // 屏幕范围：太空 miku 猫
+        let spaceScopeRoot = NSMenuItem(title: "太空屏幕", action: nil, keyEquivalent: "")
+        let spaceScopeMenu = NSMenu()
+        let spaceScopes: [(String, AppSettings.ScreenScope)] = [("内置屏幕", .builtin), ("扩展屏幕", .external)]
+        for (title, scope) in spaceScopes {
+            let item = NSMenuItem(title: title, action: #selector(selectSpaceScope(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = scope.rawValue
+            if AppSettings.shared.spaceScreenScope == scope { item.state = .on }
+            spaceScopeMenu.addItem(item)
+            spaceScopeMenuItems.append(item)
+        }
+        spaceScopeRoot.submenu = spaceScopeMenu
+        menu.addItem(spaceScopeRoot)
+
         // 重置
         let resetEdge = NSMenuItem(title: "重置 沿挂miku猫 位置", action: #selector(resetEdge(_:)), keyEquivalent: "")
         resetEdge.target = self
@@ -242,6 +274,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             item.state = (item == sender) ? .on : .off
         }
     }
+
+    @objc private func selectEdgeScope(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let scope = AppSettings.ScreenScope(rawValue: raw) else { return }
+        AppSettings.shared.edgeScreenScope = scope
+        // update checkmarks
+        for item in edgeScopeMenuItems {
+            let isSel = (item.representedObject as? String) == raw
+            item.state = isSel ? .on : .off
+        }
+        // 约束沿挂窗口在新的边界内
+        if let w = mikuWindow {
+            let b = AppSettings.shared.edgeBounds()
+            var f = w.frame
+            f.origin.x = min(max(b.minX, f.origin.x), b.maxX - f.size.width)
+            f.origin.y = min(max(b.minY, f.origin.y), b.maxY - f.size.height)
+            w.setFrame(f, display: true)
+        }
+    }
+
+    @objc private func selectSpaceScope(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let scope = AppSettings.ScreenScope(rawValue: raw) else { return }
+        AppSettings.shared.spaceScreenScope = scope
+        // update checkmarks
+        for item in spaceScopeMenuItems {
+            let isSel = (item.representedObject as? String) == raw
+            item.state = isSel ? .on : .off
+        }
+        // 将所有太空 miku 立即夹取到新边界内
+        let b = AppSettings.shared.spaceBounds()
+        for w in spaceWindows {
+            var c = w.centerPoint
+            let r = w.bodyRadius
+            c.x = min(max(b.minX + r, c.x), b.maxX - r)
+            c.y = min(max(b.minY + r, c.y), b.maxY - r)
+            w.centerPoint = c
+        }
+    }
     
     @objc private func showAbout(_ sender: NSMenuItem) {
         let alert = NSAlert()
@@ -276,18 +347,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startPhysicsTimerIfNeeded()
     }
     
-    private func globalBounds() -> CGRect {
-        let screens = NSScreen.screens
-        if screens.isEmpty { return CGRect(x: 0, y: 0, width: 800, height: 600) }
-        var rect = screens[0].frame
-        for s in screens.dropFirst() { rect = rect.union(s.frame) }
-        return rect
+    private func spaceBounds() -> CGRect {
+        AppSettings.shared.spaceBounds()
     }
     
     @objc private func tickPhysics() {
         guard !spaceWindows.isEmpty else { return }
         let dt = CGFloat(1.0 / AppSettings.shared.frameRate)
-        let bounds = globalBounds()
+        let bounds = spaceBounds()
 
         // 读取状态
         let count = spaceWindows.count

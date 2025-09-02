@@ -250,10 +250,8 @@ class MikuWindow: NSWindow {
     }
     
     private func updateFallAnimation() {
-        let currentScreen = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main
-        guard let screen = currentScreen else { return }
-        // 使用 frame，避免个别环境访问 visibleFrame 崩溃
-        let screenFrame = screen.frame
+        // 使用用户选择的沿挂屏幕边界
+        let screenFrame = AppSettings.shared.edgeBounds()
         
         let deltaTime: CGFloat = CGFloat(1.0 / AppSettings.shared.frameRate)
         fallVelocity += gravity * deltaTime
@@ -316,12 +314,10 @@ class MikuWindow: NSWindow {
         newFrame.origin.x = screenPoint.x - dragOffset.x
         newFrame.origin.y = screenPoint.y - dragOffset.y
         
-        // 约束在屏幕范围内（使用 frame 以避免 visibleFrame 崩溃）
-        if let screen = self.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(self.frame) }) ?? NSScreen.main {
-            let frame = screen.frame
-            newFrame.origin.x = min(max(frame.minX, newFrame.origin.x), frame.maxX - newFrame.size.width)
-            newFrame.origin.y = min(max(frame.minY, newFrame.origin.y), frame.maxY - newFrame.size.height)
-        }
+        // 约束在用户选择的沿挂屏幕范围内
+        let frame = AppSettings.shared.edgeBounds()
+        newFrame.origin.x = min(max(frame.minX, newFrame.origin.x), frame.maxX - newFrame.size.width)
+        newFrame.origin.y = min(max(frame.minY, newFrame.origin.y), frame.maxY - newFrame.size.height)
         
         self.setFrame(newFrame, display: true)
     }
@@ -343,10 +339,8 @@ class MikuWindow: NSWindow {
         isDragging = false
         
         // 重新使用初始化时的位置计算逻辑
-        guard let mainScreen = NSScreen.main else { return }
-        
-        // 使用 frame，避免个别环境访问 visibleFrame 崩溃
-        let screenFrame = mainScreen.frame
+        // 使用用户选择的沿挂屏幕边界
+        let screenFrame = AppSettings.shared.edgeBounds()
         let desiredSize = CGSize(width: 150, height: 200)
         let usedWidth = min(desiredSize.width, max(10, screenFrame.width))
         let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
