@@ -29,8 +29,8 @@ final class AppSettings {
     // MARK: - 屏幕范围选择
     enum ScreenScope: String { case builtin, external }
     // 沿挂/太空分别选择屏幕范围
-    var edgeScreenScope: ScreenScope = .builtin { didSet { notifyScreenScopeChange() } }
-    var spaceScreenScope: ScreenScope = .builtin { didSet { notifyScreenScopeChange() } }
+    var edgeScreenScope: ScreenScope = .builtin { didSet { refreshCachedBounds(); notifyScreenScopeChange() } }
+    var spaceScreenScope: ScreenScope = .builtin { didSet { refreshCachedBounds(); notifyScreenScopeChange() } }
 
     // MARK: - 物理参数（可调）
     // 沿挂：默认重力 500，下落无弹力（0 表示不弹）
@@ -80,12 +80,34 @@ final class AppSettings {
     }
 
     // 沿挂使用 frame 范围；太空模式使用 visibleFrame（避开菜单栏/坞）
-    func edgeBounds() -> CGRect { bounds(for: edgeScreenScope) }
-    func spaceBounds() -> CGRect {
+    private var cachedEdgeRect: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600)
+    private var cachedSpaceRect: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600)
+
+    func edgeBounds() -> CGRect { cachedEdgeRect }
+    func spaceBounds() -> CGRect { cachedSpaceRect }
+
+    private func computeEdgeBounds() -> CGRect { bounds(for: edgeScreenScope) }
+    private func computeSpaceBounds() -> CGRect {
         let group = screens(for: spaceScreenScope)
         guard let first = group.first else { return CGRect(x: 0, y: 0, width: 800, height: 600) }
         var rect = first.visibleFrame
         for s in group.dropFirst() { rect = rect.union(s.visibleFrame) }
         return rect
+    }
+
+    private func refreshCachedBounds() {
+        cachedEdgeRect = computeEdgeBounds()
+        cachedSpaceRect = computeSpaceBounds()
+    }
+
+    private init() {
+        refreshCachedBounds()
+        // 屏幕参数变化时刷新缓存
+        NotificationCenter.default.addObserver(self, selector: #selector(onScreensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    @objc private func onScreensChanged() {
+        refreshCachedBounds()
+        notifyScreenScopeChange()
     }
 }
