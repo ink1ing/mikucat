@@ -49,17 +49,32 @@ class MikuWindow: NSWindow {
         let performMove: () -> Void = { [weak self] in
             guard let self = self else { return }
             // 使用用户选择的沿挂屏幕边界，避免与“扩展/内置屏幕”选择不一致
-            let vf = AppSettings.shared.edgeBounds()
+            var vf = AppSettings.shared.edgeBounds()
+            // 防御：若宽高不是正数（包括 NaN 导致比较为 false）则退回主屏
+            if !(vf.width > 0) || !(vf.height > 0) {
+                if let main = NSScreen.main?.visibleFrame { vf = main }
+                else { vf = CGRect(x: 0, y: 0, width: 800, height: 600) }
+            }
 
             // 期望大小，并在屏幕极小或异常时进行夹取
             let desiredSize = CGSize(width: 150, height: 200)
-            let usedWidth = min(desiredSize.width, max(10, vf.width))
-            let usedHeight = min(desiredSize.height, max(10, vf.height))
+            let safeW = (vf.width > 0) ? vf.width : desiredSize.width
+            let safeH = (vf.height > 0) ? vf.height : desiredSize.height
+            let usedWidth = min(desiredSize.width, max(CGFloat(10), safeW))
+            let usedHeight = min(desiredSize.height, max(CGFloat(10), safeH))
             let size = CGSize(width: usedWidth, height: usedHeight)
 
             // X：贴近右侧再夹取，防止越界
+            let xLower = vf.minX
+            let xUpper = vf.maxX - size.width
             let targetXRaw = vf.maxX - size.width + Self.rightEdgeShiftForPng2
-            let x = min(max(vf.minX, targetXRaw), vf.maxX - size.width)
+            let x: CGFloat
+            if xUpper >= xLower {
+                x = min(max(xLower, targetXRaw), xUpper)
+            } else {
+                // 当屏幕宽度比窗口还小，退回到下限，避免产生非法范围
+                x = xLower
+            }
 
             // Y：在 [minY, maxY - height] 间随机，若无有效范围则取 minY
             let lowerY = vf.minY
@@ -226,9 +241,15 @@ class MikuWindow: NSWindow {
         // 判断是否在右侧边缘附近（允许一定误差）
         let distanceToRight = abs(win.maxX - frame.maxX)
         if distanceToRight <= 32 { // 32像素阈值，吸附更稳定
+            let lower = frame.minX
+            let upper = frame.maxX - win.width
             var targetX = frame.maxX - win.width + Self.rightEdgeShiftForPng2
-            // 再次夹取，避免超出屏幕
-            targetX = min(max(frame.minX, targetX), frame.maxX - win.width)
+            // 再次夹取，避免超出屏幕；当 upper < lower 时退回到 lower
+            if upper >= lower {
+                targetX = min(max(lower, targetX), upper)
+            } else {
+                targetX = lower
+            }
             if abs(win.origin.x - targetX) > 0.5 {
                 win.origin.x = targetX
                 self.setFrame(win, display: true)
@@ -247,6 +268,11 @@ class MikuWindow: NSWindow {
     private func stopFallAnimation() {
         fallAnimationTimer?.invalidate()
         fallAnimationTimer = nil
+    }
+
+    // 对外：停止一切动画/物理活动（用于隐藏时安全挂起）
+    func stopAllActivities() {
+        stopFallAnimation()
     }
     
     private func updateFallAnimation() {
@@ -301,6 +327,13 @@ class MikuWindow: NSWindow {
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
+
+    // 窗口关闭前停止动画与移除监听，避免关闭后仍然触发 setFrame 导致崩溃
+    override func close() {
+        stopFallAnimation()
+        NotificationCenter.default.removeObserver(self)
+        super.close()
+    }
     
     // MARK: - 鼠标事件处理
     override func mouseDown(with event: NSEvent) {
@@ -353,8 +386,14 @@ class MikuWindow: NSWindow {
         if distanceToRight <= snapThreshold {
             var f = self.frame
             // 吸附到右边缘（带 png2 右移校正）
+            let lower = bounds.minX
+            let upper = bounds.maxX - f.size.width
             var targetX = bounds.maxX - f.size.width + Self.rightEdgeShiftForPng2
-            targetX = min(max(bounds.minX, targetX), bounds.maxX - f.size.width)
+            if upper >= lower {
+                targetX = min(max(lower, targetX), upper)
+            } else {
+                targetX = lower
+            }
             // 夹取 Y
             let minY = bounds.minY
             let maxY = bounds.maxY - f.size.height
@@ -384,8 +423,10 @@ class MikuWindow: NSWindow {
         let usedHeight = min(desiredSize.height, max(10, screenFrame.height))
         let imageSize = CGSize(width: usedWidth, height: usedHeight)
         
+        let lowerX = screenFrame.minX
+        let upperX = screenFrame.maxX - imageSize.width
         let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
-        let initialX = min(initialTargetX, screenFrame.maxX - imageSize.width)
+        let initialX: CGFloat = (upperX >= lowerX) ? min(max(lowerX, initialTargetX), upperX) : lowerX
         
         let minY = screenFrame.minY
         let maxYCandidate = screenFrame.maxY - imageSize.height

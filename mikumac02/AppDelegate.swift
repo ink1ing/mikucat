@@ -7,7 +7,7 @@
 
 import Cocoa
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     // 沿挂 miku 猫（重力/贴边）
     var mikuWindow: MikuWindow?
     // 太空 miku 猫（弹跳）—— 支持多窗口
@@ -24,6 +24,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var edgeScopeMenuItems: [NSMenuItem] = []
     var spaceScopeMenuItems: [NSMenuItem] = []
     var prefsWindowController: PreferencesWindowController?
+    // 防抖与重入保护：切换可见性时避免重复触发
+    private var isTogglingEdge: Bool = false
+    private var isTogglingSpace: Bool = false
+    // 期望可见性（菜单点击时仅更新为期望值，菜单关闭后统一应用）
+    private var desiredEdgeVisible: Bool = true
+    private var desiredSpaceVisible: Bool = false
+    // App 激活状态（用于暂停物理更新以省电）
+    private var isAppActive: Bool = true
+    // 实际可见性状态，避免以 nil/数组是否为空作为可见逻辑判断
+    private var isEdgeVisible: Bool = false
+    private var isSpaceVisible: Bool = false
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("应用程序启动完成...")
@@ -66,6 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         // 创建菜单
         let menu = NSMenu()
+        menu.delegate = self
         
         // 可见性勾选：沿挂 miku 猫
         let edgeItem = NSMenuItem(title: "沿挂miku猫 可见", action: #selector(toggleEdgeVisible(_:)), keyEquivalent: "")
@@ -154,50 +166,72 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
+
+        // 监听 App 活动状态变更以优化性能
+        NotificationCenter.default.addObserver(self, selector: #selector(onAppBecameActive), name: NSApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onAppResignedActive), name: NSApplication.didResignActiveNotification, object: nil)
     }
     
     // MARK: - 桌宠控制
     private func showEdgeWindow() {
-        guard mikuWindow == nil else { return }
-        mikuWindow = MikuWindow()
-        mikuWindow?.makeKeyAndOrderFront(nil)
+        // 若未创建则创建一次；之后只做显示/隐藏，不销毁
+        if mikuWindow == nil {
+            mikuWindow = MikuWindow()
+        }
         mikuWindow?.orderFrontRegardless()
-        // 首次显示后，自动贴到用户选择的“沿挂屏幕”右侧
+        // 首次显示或重新显示后，贴到用户选择的“沿挂屏幕”右侧
         DispatchQueue.main.async { [weak self] in
             self?.mikuWindow?.moveToRightEdgeWithRandomY()
         }
         showEdgeItem?.state = .on
+        isEdgeVisible = true
+        isTogglingEdge = false
     }
     
     private func hideEdgeWindow() {
-        mikuWindow?.close()
-        mikuWindow = nil
+        // 不销毁，仅隐藏，先停止活动，避免隐藏期间仍然 setFrame
+        if let w = mikuWindow {
+            w.stopAllActivities()
+            w.orderOut(nil)
+        }
         showEdgeItem?.state = .off
+        isEdgeVisible = false
+        isTogglingEdge = false
     }
     
     private func showSpaceWindow() {
-        // 如果已存在至少一个窗口，则不重复创建
+        // 若不存在任何窗口则创建一个；否则只做显示
         if spaceWindows.isEmpty {
             spawnSpaceWindow()
+        } else {
+            for w in spaceWindows { w.orderFrontRegardless() }
         }
         showSpaceItem?.state = .on
+        isSpaceVisible = true
         startPhysicsTimerIfNeeded()
+        isTogglingSpace = false
     }
     
     private func hideSpaceWindow() {
-        for w in spaceWindows { w.close() }
-        spaceWindows.removeAll()
+        // 不销毁，仅隐藏+停表
+        physicsTimer?.invalidate()
+        physicsTimer = nil
+        for w in spaceWindows { w.orderOut(nil) }
         showSpaceItem?.state = .off
-        stopPhysicsTimerIfIdle()
+        isSpaceVisible = false
+        isTogglingSpace = false
     }
     
     // MARK: - 菜单动作
     @objc private func toggleEdgeVisible(_ sender: NSMenuItem) {
-        if mikuWindow == nil { showEdgeWindow() } else { hideEdgeWindow() }
+        // 仅更新期望状态，不立即执行，避免在菜单跟踪期间执行 UI 变更
+        desiredEdgeVisible.toggle()
+        showEdgeItem?.state = desiredEdgeVisible ? .on : .off
     }
     
     @objc private func toggleSpaceVisible(_ sender: NSMenuItem) {
-        if spaceWindows.isEmpty { showSpaceWindow() } else { hideSpaceWindow() }
+        desiredSpaceVisible.toggle()
+        showSpaceItem?.state = desiredSpaceVisible ? .on : .off
     }
     
     @objc private func resetEdge(_ sender: NSMenuItem) {
@@ -358,7 +392,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - 全局物理更新（全屏+相互碰撞）
     private func startPhysicsTimerIfNeeded() {
-        guard physicsTimer == nil, !spaceWindows.isEmpty else { return }
+        guard physicsTimer == nil, !spaceWindows.isEmpty, isAppActive else { return }
         physicsTimer = Timer.scheduledTimer(timeInterval: AppSettings.shared.frameInterval, target: self, selector: #selector(tickPhysics), userInfo: nil, repeats: true)
     }
     
@@ -381,7 +415,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc private func tickPhysics() {
-        guard !spaceWindows.isEmpty else { return }
+        // 使用快照，避免在回调期间数组变化导致越界
+        let windows = self.spaceWindows
+        guard !windows.isEmpty else { return }
         let dt = CGFloat(1.0 / AppSettings.shared.frameRate)
         let bounds = spaceBounds()
         // 为避免沿边缘“走线”（垂直或水平分量接近 0 ），对速度分量设置一个最小阈值
@@ -390,14 +426,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let g = AppSettings.shared.spaceGravity
 
         // 读取状态
-        let count = spaceWindows.count
+        let count = windows.count
         var centers = [CGPoint](repeating: .zero, count: count)
         var radii = [CGFloat](repeating: 0, count: count)
         var vels = [CGPoint](repeating: .zero, count: count)
         var paused = [Bool](repeating: false, count: count)
         var hitWall = [Bool](repeating: false, count: count)
         var hitOther = [Bool](repeating: false, count: count)
-        for (i, w) in spaceWindows.enumerated() {
+        for (i, w) in windows.enumerated() {
             centers[i] = w.centerPoint
             radii[i] = w.bodyRadius
             vels[i] = w.velocity
@@ -518,12 +554,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // 回写
         for i in 0..<count {
-            let w = spaceWindows[i]
+            let w = windows[i]
             w.velocity = vels[i]
             if !paused[i] { w.centerPoint = centers[i] }
             if (hitWall[i] || hitOther[i]) {
                 w.updateImageForImpact()
             }
         }
+    }
+
+    // MARK: - NSMenuDelegate
+    func menuDidClose(_ menu: NSMenu) {
+        // 菜单关闭后再应用可见性变更，避免卡顿/重入
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let edgeVisibleNow = self.isEdgeVisible
+            if self.desiredEdgeVisible != edgeVisibleNow {
+                if self.desiredEdgeVisible { self.showEdgeWindow() } else { self.hideEdgeWindow() }
+            }
+            let spaceVisibleNow = self.isSpaceVisible
+            if self.desiredSpaceVisible != spaceVisibleNow {
+                if self.desiredSpaceVisible { self.showSpaceWindow() } else { self.hideSpaceWindow() }
+            }
+        }
+    }
+
+    // MARK: - App 活动状态变化，暂停/恢复物理更新
+    @objc private func onAppBecameActive() {
+        isAppActive = true
+        startPhysicsTimerIfNeeded()
+    }
+    @objc private func onAppResignedActive() {
+        isAppActive = false
+        physicsTimer?.invalidate()
+        physicsTimer = nil
     }
 }
