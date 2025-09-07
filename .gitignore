@@ -1,0 +1,16 @@
+# Xcode DerivedData (local build artifacts)
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Build outputs
+build/
+*.dSYM
+
+# Logs
+*.xcactivitylog
+*.xcresult
+
