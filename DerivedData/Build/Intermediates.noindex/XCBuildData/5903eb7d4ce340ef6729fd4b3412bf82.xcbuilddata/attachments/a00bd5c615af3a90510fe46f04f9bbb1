@@ -1,0 +1,46 @@
+{
+  "" : {
+    "const-values" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary.swiftconstvalues",
+    "dependencies" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary.d",
+    "diagnostics" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary.dia",
+    "emit-module-dependencies" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary-emit-module.dia",
+    "pch" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02-primary.swiftdeps"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/AppDelegate.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppDelegate.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppDelegate.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppDelegate.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/AppSettings.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppSettings.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppSettings.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/AppSettings.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/MikuWindow.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/MikuWindow.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/MikuWindow.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/MikuWindow.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/PreferencesWindowController.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/PreferencesWindowController.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/PreferencesWindowController.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/PreferencesWindowController.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/SpaceMikuWindow.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/SpaceMikuWindow.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/SpaceMikuWindow.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/SpaceMikuWindow.o"
+  },
+  "/Users/inkling/Desktop/mikumac/mikumac02/mikumac02/mikumac02App.swift" : {
+    "index-unit-output-path" : "/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02App.o",
+    "llvm-bc" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02App.bc",
+    "object" : "/Users/inkling/Desktop/mikumac/mikumac02/DerivedData/Build/Intermediates.noindex/mikumac02.build/Release/mikumac02.build/Objects-normal/arm64/mikumac02App.o"
+  }
+}
