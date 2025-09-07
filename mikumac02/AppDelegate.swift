@@ -35,6 +35,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     // 实际可见性状态，避免以 nil/数组是否为空作为可见逻辑判断
     private var isEdgeVisible: Bool = false
     private var isSpaceVisible: Bool = false
+    // 全局鼠标监控（用于点击其他窗口时暂停太空 miku）
+    private var globalMouseMonitor: Any?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("应用程序启动完成...")
