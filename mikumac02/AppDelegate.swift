@@ -371,9 +371,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     }
     
     @objc private func showAbout(_ sender: NSMenuItem) {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let alert = NSAlert()
-        alert.messageText = "Miku桌面宠物 v1.0"
-        alert.informativeText = "一个可爱的Miku桌面宠物应用\n\n功能:\n• 拖拽互动\n• 重力模拟\n• 可爱动画\n\n使用方法:\n• 长按拖动Miku\n• 释放后观看重力效果\n• 使用菜单栏控制启停"
+        alert.messageText = "Miku桌面宠物 v\(version)"
+        alert.informativeText = "一个可爱的Miku桌面宠物应用\n\n功能:\n• 拖拽互动\n• 重力/弹跳模拟（沿挂/太空）\n• 多屏选择与帧率设置\n\n使用方法:\n• 长按拖动Miku\n• 释放后观看重力效果\n• 使用菜单栏控制可见/分裂/重置"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "确定")
         alert.runModal()
