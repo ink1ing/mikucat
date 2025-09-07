@@ -47,11 +47,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         
         // 监听太空miku分裂请求
         NotificationCenter.default.addObserver(self, selector: #selector(handleSpaceSpawnRequested(_:)), name: SpaceMikuWindow.spawnRequestedNotification, object: nil)
+        // 监听太空miku暂停状态变化（用于按需启停物理计时器）
+        NotificationCenter.default.addObserver(self, selector: #selector(handleSpacePauseChanged(_:)), name: SpaceMikuWindow.pauseChangedNotification, object: nil)
         // 帧率变化时重启物理计时器
         NotificationCenter.default.addObserver(self, selector: #selector(handleFrameRateChanged), name: AppSettings.frameRateChangedNotification, object: nil)
         
         // 默认显示：沿挂miku猫 可见；太空miku猫默认隐藏
         showEdgeWindow()
+        
+        // 全局鼠标监控：点击非太空 miku 区域时暂停太空 miku
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            self?.handleGlobalMouseDown()
+        }
         
         print("应用程序初始化完成")
     }
@@ -59,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     func applicationWillTerminate(_ notification: Notification) {
         hideEdgeWindow()
         hideSpaceWindow()
+        if let monitor = globalMouseMonitor { NSEvent.removeMonitor(monitor) }
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -394,11 +402,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     // MARK: - 全局物理更新（全屏+相互碰撞）
     private func startPhysicsTimerIfNeeded() {
         guard physicsTimer == nil, !spaceWindows.isEmpty, isAppActive else { return }
+        // 全部暂停或不可见时无需启动
+        if !isSpaceVisible || spaceWindows.allSatisfy({ $0.isPaused }) { return }
         physicsTimer = Timer.scheduledTimer(timeInterval: AppSettings.shared.frameInterval, target: self, selector: #selector(tickPhysics), userInfo: nil, repeats: true)
     }
     
     private func stopPhysicsTimerIfIdle() {
-        if spaceWindows.isEmpty {
+        if spaceWindows.isEmpty || !isSpaceVisible || spaceWindows.allSatisfy({ $0.isPaused }) {
             physicsTimer?.invalidate()
             physicsTimer = nil
         }
@@ -419,6 +429,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         // 使用快照，避免在回调期间数组变化导致越界
         let windows = self.spaceWindows
         guard !windows.isEmpty else { return }
+        // 若当前隐藏或全部暂停，则停止计时器
+        if !isSpaceVisible || windows.allSatisfy({ $0.isPaused }) { stopPhysicsTimerIfIdle(); return }
         let dt = CGFloat(1.0 / AppSettings.shared.frameRate)
         let bounds = spaceBounds()
         // 为避免沿边缘“走线”（垂直或水平分量接近 0 ），对速度分量设置一个最小阈值
@@ -562,6 +574,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
                 w.updateImageForImpact()
             }
         }
+    }
+
+    // 统一判断当前是否需要运行物理计时器
+    private func refreshPhysicsTimer() {
+        stopPhysicsTimerIfIdle()
+        startPhysicsTimerIfNeeded()
+    }
+
+    @objc private func handleSpacePauseChanged(_ note: Notification) {
+        // 有窗口切换暂停/继续，按需启停计时器
+        refreshPhysicsTimer()
+    }
+
+    private func handleGlobalMouseDown() {
+        // 点击发生在太空窗口之外：暂停全部太空 miku
+        guard isSpaceVisible, !spaceWindows.isEmpty else { return }
+        let p = NSEvent.mouseLocation
+        if spaceWindows.contains(where: { $0.frame.contains(p) }) { return }
+        for w in spaceWindows { w.isPaused = true }
+        refreshPhysicsTimer()
     }
 
     // MARK: - NSMenuDelegate

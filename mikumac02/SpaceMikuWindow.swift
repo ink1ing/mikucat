@@ -19,6 +19,7 @@ class SpaceMikuWindow: NSWindow {
     var isPaused: Bool = false
     private var pendingSingleClick: DispatchWorkItem?
     static let spawnRequestedNotification = Notification.Name("SpaceMikuWindow.spawnRequested")
+    static let pauseChangedNotification = Notification.Name("SpaceMikuWindow.pauseChanged")
     
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
@@ -154,7 +155,9 @@ class SpaceMikuWindow: NSWindow {
             pendingSingleClick?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
+                let willPause = !self.isPaused
                 if self.isPaused { self.start() } else { self.stop() }
+                NotificationCenter.default.post(name: Self.pauseChangedNotification, object: self, userInfo: ["paused": willPause])
             }
             pendingSingleClick = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
