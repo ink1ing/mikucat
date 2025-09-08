@@ -14,6 +14,7 @@ final class AppSettings {
     static let frameRateChangedNotification = Notification.Name("AppSettings.frameRateChanged")
     static let screenScopeChangedNotification = Notification.Name("AppSettings.screenScopeChanged")
     static let physicsParamsChangedNotification = Notification.Name("AppSettings.physicsParamsChanged")
+    static let edgeVisualParamsChangedNotification = Notification.Name("AppSettings.edgeVisualParamsChanged")
 
     // Default 60 FPS
     var frameRate: Double = 60 {
@@ -39,6 +40,18 @@ final class AppSettings {
     // 太空：默认重力 0（无重力），弹力 1（完全弹性）
     var spaceGravity: CGFloat = 0 { didSet { notifyPhysicsChange(oldValue != spaceGravity) } }
     var spaceRestitution: CGFloat = 1 { didSet { spaceRestitution = max(0, min(1, spaceRestitution)); notifyPhysicsChange(true) } }
+    
+    // MARK: - 视觉参数（沿挂）
+    // 右侧“紧贴补偿”（单位：像素 px）。每 +1 px，沿挂 miku 向右平移 1px。
+    // 默认保持与当前版本相同的贴边偏移体验：12。
+    var edgeRightCompensationPx: CGFloat = 12 {
+        didSet {
+            // 合理范围 0..32px
+            let clamped = max(0, min(32, edgeRightCompensationPx))
+            if clamped != edgeRightCompensationPx { edgeRightCompensationPx = clamped; return }
+            NotificationCenter.default.post(name: AppSettings.edgeVisualParamsChangedNotification, object: self)
+        }
+    }
     
     private func notifyScreenScopeChange() {
         NotificationCenter.default.post(name: AppSettings.screenScopeChangedNotification, object: self)
@@ -102,6 +115,7 @@ final class AppSettings {
 
     private init() {
         refreshCachedBounds()
+        loadFromDefaults()
         // 屏幕参数变化时刷新缓存
         NotificationCenter.default.addObserver(self, selector: #selector(onScreensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
@@ -109,5 +123,42 @@ final class AppSettings {
     @objc private func onScreensChanged() {
         refreshCachedBounds()
         notifyScreenScopeChange()
+    }
+
+    // MARK: - 持久化
+    private enum Keys {
+        static let edgeGravity = "edgeGravity"
+        static let edgeRestitution = "edgeRestitution"
+        static let spaceGravity = "spaceGravity"
+        static let spaceRestitution = "spaceRestitution"
+        static let edgeRightCompensationPx = "edgeRightCompensationPx"
+        static let frameRate = "frameRate"
+        static let edgeScope = "edgeScreenScope"
+        static let spaceScope = "spaceScreenScope"
+    }
+
+    func saveToDefaults() {
+        let d = UserDefaults.standard
+        d.set(Double(edgeGravity), forKey: Keys.edgeGravity)
+        d.set(Double(edgeRestitution), forKey: Keys.edgeRestitution)
+        d.set(Double(spaceGravity), forKey: Keys.spaceGravity)
+        d.set(Double(spaceRestitution), forKey: Keys.spaceRestitution)
+        d.set(Double(edgeRightCompensationPx), forKey: Keys.edgeRightCompensationPx)
+        d.set(frameRate, forKey: Keys.frameRate)
+        d.set(edgeScreenScope.rawValue, forKey: Keys.edgeScope)
+        d.set(spaceScreenScope.rawValue, forKey: Keys.spaceScope)
+        d.synchronize()
+    }
+
+    func loadFromDefaults() {
+        let d = UserDefaults.standard
+        if d.object(forKey: Keys.edgeGravity) != nil { edgeGravity = CGFloat(d.double(forKey: Keys.edgeGravity)) }
+        if d.object(forKey: Keys.edgeRestitution) != nil { edgeRestitution = CGFloat(d.double(forKey: Keys.edgeRestitution)) }
+        if d.object(forKey: Keys.spaceGravity) != nil { spaceGravity = CGFloat(d.double(forKey: Keys.spaceGravity)) }
+        if d.object(forKey: Keys.spaceRestitution) != nil { spaceRestitution = CGFloat(d.double(forKey: Keys.spaceRestitution)) }
+        if d.object(forKey: Keys.edgeRightCompensationPx) != nil { edgeRightCompensationPx = CGFloat(d.double(forKey: Keys.edgeRightCompensationPx)) }
+        if d.object(forKey: Keys.frameRate) != nil { frameRate = d.double(forKey: Keys.frameRate) }
+        if let raw = d.string(forKey: Keys.edgeScope), let s = ScreenScope(rawValue: raw) { edgeScreenScope = s }
+        if let raw = d.string(forKey: Keys.spaceScope), let s = ScreenScope(rawValue: raw) { spaceScreenScope = s }
     }
 }

@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-09-08
+
+### 新增
+- 沿挂「紧贴补偿(px)」：在偏好设置 → 沿挂 中新增可调补偿（默认 12px，范围 0–32）。每 +1px，沿挂 miku 向右平移 1px，用于消除素材透明边造成的视觉缝隙。
+- 保存设置按钮：偏好页右下角新增「保存设置」，一键持久化当前参数到用户默认；应用启动时自动加载上次保存。
+
+### 体验
+- 偏好页重构：沿挂/太空两页统一使用 NSBox+NSGridView 的三列布局（标签/滑杆/数值），对齐规范，易读易用。
+- 紧贴补偿「即时生效」：
+  - 初次贴边、拖拽吸附、重置位置与落地恢复时均使用补偿，并允许补偿越过右缘；
+  - 在补偿值变更时，沿挂 miku 立即贴到右侧并进行像素级对齐（Retina 下 1px≈0.5pt 也会生效）。
+
+### 行为调整（太空模式）
+- 保持运动：取消因点击其它窗口或应用失焦而自动暂停/停表的行为（你仍可单击太空 miku 暂停/继续，双击分裂）。
+
+### 修复
+- 首次启动未应用补偿：修复了初次贴边使用旧上限导致补偿被抵消的问题；现在启动即按默认/已保存的补偿生效。
+- 落地后补偿丢失：进入落地状态后会重新按补偿对齐，确保与贴边视觉一致。
+
+### 开发者笔记
+- 新增 AppSettings 的持久化方法：saveToDefaults()/loadFromDefaults()。
+- 新增通知 edgeVisualParamsChangedNotification，沿挂窗口监听以实时响应补偿变更。
+
+—
+
 ## [1.1.0] - 2025-09-07
 
 ### 亮点（特色）
@@ -47,3 +72,4 @@ All notable changes to this project will be documented in this file.
 - 初始发布：沿挂与太空两种模式、基础拖拽/重力/弹跳、多屏与帧率设置、菜单栏控制等。
 
 [1.1.0]: https://github.com/ink1ing/mikucat/releases/tag/v1.1.0
+[1.2.0]: https://github.com/ink1ing/mikucat/releases/tag/v1.2.0

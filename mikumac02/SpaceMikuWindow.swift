@@ -152,6 +152,7 @@ class SpaceMikuWindow: NSWindow {
             return
         }
         if event.clickCount == 1 {
+            // 延迟执行，给双击留出时间窗口
             pendingSingleClick?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }

@@ -64,13 +64,19 @@ class MikuWindow: NSWindow {
             let usedHeight = min(desiredSize.height, max(CGFloat(10), safeH))
             let size = CGSize(width: usedWidth, height: usedHeight)
 
-            // X：贴近右侧再夹取，防止越界
+            // X：贴右并允许补偿越界；像素对齐
             let xLower = vf.minX
             let xUpper = vf.maxX - size.width
-            let targetXRaw = vf.maxX - size.width + Self.rightEdgeShiftForPng2
+            let scale = (self.backingScaleFactor > 0) ? self.backingScaleFactor : (NSScreen.main?.backingScaleFactor ?? 2.0)
+            let compPt = AppSettings.shared.edgeRightCompensationPx / max(scale, 1)
+            let upperWithComp = xUpper + compPt
+            let pxMaxX = round(vf.maxX * scale)
+            let pxW = round(size.width * scale)
+            var targetXRaw = (pxMaxX - pxW) / scale + compPt
             let x: CGFloat
-            if xUpper >= xLower {
-                x = min(max(xLower, targetXRaw), xUpper)
+            if upperWithComp >= xLower {
+                targetXRaw = min(max(xLower, targetXRaw), upperWithComp)
+                x = targetXRaw
             } else {
                 // 当屏幕宽度比窗口还小，退回到下限，避免产生非法范围
                 x = xLower
@@ -85,6 +91,8 @@ class MikuWindow: NSWindow {
             let newFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
             print("屏幕可见区域: \(vf), 初始窗口位置: \(newFrame)")
             self.setFrame(newFrame, display: true)
+            // 再次按像素校正（防止亚像素导致的微缝隙）
+            self.applyRightEdgeShiftIfNeeded()
         }
         if Thread.isMainThread {
             DispatchQueue.main.async(execute: performMove)
@@ -138,9 +146,10 @@ class MikuWindow: NSWindow {
         
         print("窗口设置完成，当前frame: \(self.frame)")
 
-        // 监听全局帧率与物理参数变化
+        // 监听全局帧率与物理参数/视觉参数变化
         NotificationCenter.default.addObserver(self, selector: #selector(handleFrameRateChanged), name: AppSettings.frameRateChangedNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handlePhysicsParamsChanged), name: AppSettings.physicsParamsChangedNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleEdgeVisualChanged), name: AppSettings.edgeVisualParamsChangedNotification, object: nil)
     }
     
     // 重写这些方法来修复焦点问题
@@ -231,6 +240,7 @@ class MikuWindow: NSWindow {
             mikuImageView.image = miku3Image
             print("设置为落地图片，图片是否存在: \(miku3Image != nil)")
             stopFallAnimation()
+            applyRightEdgeShiftIfNeeded()
         }
     }
 
@@ -243,17 +253,23 @@ class MikuWindow: NSWindow {
         if distanceToRight <= 32 { // 32像素阈值，吸附更稳定
             let lower = frame.minX
             let upper = frame.maxX - win.width
-            var targetX = frame.maxX - win.width + Self.rightEdgeShiftForPng2
-            // 再次夹取，避免超出屏幕；当 upper < lower 时退回到 lower
-            if upper >= lower {
-                targetX = min(max(lower, targetX), upper)
+            let scale = (self.backingScaleFactor > 0) ? self.backingScaleFactor : (NSScreen.main?.backingScaleFactor ?? 2.0)
+            let compPt = AppSettings.shared.edgeRightCompensationPx / max(scale, 1)
+            var targetX = frame.maxX - win.width + compPt
+            // 再次夹取，允许补偿越过右缘；当 upper < lower 时退回到 lower
+            let upperWithComp = upper + compPt
+            if upperWithComp >= lower {
+                targetX = min(max(lower, targetX), upperWithComp)
             } else {
                 targetX = lower
             }
-            if abs(win.origin.x - targetX) > 0.5 {
+            // 按像素对齐比较：若目标像素位置变化则移动
+            let pxCur = round(win.origin.x * scale)
+            let pxTar = round(targetX * scale)
+            if pxCur != pxTar {
                 win.origin.x = targetX
                 self.setFrame(win, display: true)
-                print("已对png2状态应用右移偏移: \(Self.rightEdgeShiftForPng2)px, 新位置: \(win)")
+                print("已应用紧贴补偿: \(AppSettings.shared.edgeRightCompensationPx)px, 新位置: \(win)")
             }
         }
     }
@@ -323,6 +339,33 @@ class MikuWindow: NSWindow {
     @objc private func handlePhysicsParamsChanged() {
         // 无需特别处理，下一帧会用新参数；若在下落中保持计时器即可
     }
+    
+    @objc private func handleEdgeVisualChanged() {
+        // 视觉补偿变更时，立即按当前补偿“贴到右侧”并像素对齐（不再要求必须已在右缘附近）
+        let screen = AppSettings.shared.edgeBounds()
+        var win = self.frame
+        let scale = (self.backingScaleFactor > 0) ? self.backingScaleFactor : (NSScreen.main?.backingScaleFactor ?? 2.0)
+        let compPt = AppSettings.shared.edgeRightCompensationPx / max(scale, 1)
+        let lower = screen.minX
+        let upper = screen.maxX - win.width
+        let upperWithComp = upper + compPt
+        // 目标按像素对齐（避免亚像素缝隙）
+        let pxMaxX = round(screen.maxX * scale)
+        let pxW = round(win.width * scale)
+        var targetX = (pxMaxX - pxW) / scale + compPt
+        if upperWithComp >= lower {
+            targetX = min(max(lower, targetX), upperWithComp)
+        } else {
+            targetX = lower
+        }
+        let pxCur = round(win.origin.x * scale)
+        let pxTar = round(targetX * scale)
+        print("[EdgeComp] compPx=\(AppSettings.shared.edgeRightCompensationPx) scale=\(scale) fromX=\(win.origin.x) -> targetX=\(targetX) pxCur=\(pxCur) pxTar=\(pxTar) screen.maxX=\(screen.maxX) winW=\(win.width)")
+        if pxCur != pxTar {
+            win.origin.x = targetX
+            self.setFrame(win, display: true)
+        }
+    }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
@@ -388,9 +431,11 @@ class MikuWindow: NSWindow {
             // 吸附到右边缘（带 png2 右移校正）
             let lower = bounds.minX
             let upper = bounds.maxX - f.size.width
-            var targetX = bounds.maxX - f.size.width + Self.rightEdgeShiftForPng2
-            if upper >= lower {
-                targetX = min(max(lower, targetX), upper)
+            let scale = (self.backingScaleFactor > 0) ? self.backingScaleFactor : (NSScreen.main?.backingScaleFactor ?? 2.0)
+            let compPt = AppSettings.shared.edgeRightCompensationPx / max(scale, 1)
+            var targetX = bounds.maxX - f.size.width + compPt
+            if upper + compPt >= lower {
+                targetX = min(max(lower, targetX), upper + compPt)
             } else {
                 targetX = lower
             }
@@ -425,8 +470,11 @@ class MikuWindow: NSWindow {
         
         let lowerX = screenFrame.minX
         let upperX = screenFrame.maxX - imageSize.width
-        let initialTargetX = screenFrame.maxX - imageSize.width + Self.rightEdgeShiftForPng2
-        let initialX: CGFloat = (upperX >= lowerX) ? min(max(lowerX, initialTargetX), upperX) : lowerX
+        let scale = (self.backingScaleFactor > 0) ? self.backingScaleFactor : (NSScreen.main?.backingScaleFactor ?? 2.0)
+        let compPt = AppSettings.shared.edgeRightCompensationPx / max(scale, 1)
+        let initialTargetX = screenFrame.maxX - imageSize.width + compPt
+        let upperWithComp = upperX + compPt
+        let initialX: CGFloat = (upperWithComp >= lowerX) ? min(max(lowerX, initialTargetX), upperWithComp) : lowerX
         
         let minY = screenFrame.minY
         let maxYCandidate = screenFrame.maxY - imageSize.height

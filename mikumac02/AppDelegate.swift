@@ -37,6 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     private var isSpaceVisible: Bool = false
     // 全局鼠标监控（用于点击其他窗口时暂停太空 miku）
     private var globalMouseMonitor: Any?
+    // 本地鼠标监控：确保应用内点击也能触发暂停（比如点到沿挂窗口/菜单）
+    private var localMouseMonitor: Any?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("应用程序启动完成...")
@@ -61,6 +63,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             self?.handleGlobalMouseDown()
         }
+        // 本地鼠标监控：应用内的鼠标按下同样触发同一逻辑
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            self?.handleGlobalMouseDown()
+            return event
+        }
         
         print("应用程序初始化完成")
     }
@@ -69,6 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         hideEdgeWindow()
         hideSpaceWindow()
         if let monitor = globalMouseMonitor { NSEvent.removeMonitor(monitor) }
+        if let monitor = localMouseMonitor { NSEvent.removeMonitor(monitor) }
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -403,7 +411,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
 
     // MARK: - 全局物理更新（全屏+相互碰撞）
     private func startPhysicsTimerIfNeeded() {
-        guard physicsTimer == nil, !spaceWindows.isEmpty, isAppActive else { return }
+        // 始终允许运行计时器（不再依赖应用是否处于激活态）
+        guard physicsTimer == nil, !spaceWindows.isEmpty else { return }
         // 全部暂停或不可见时无需启动
         if !isSpaceVisible || spaceWindows.allSatisfy({ $0.isPaused }) { return }
         physicsTimer = Timer.scheduledTimer(timeInterval: AppSettings.shared.frameInterval, target: self, selector: #selector(tickPhysics), userInfo: nil, repeats: true)
@@ -590,12 +599,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     }
 
     private func handleGlobalMouseDown() {
-        // 点击发生在太空窗口之外：暂停全部太空 miku
-        guard isSpaceVisible, !spaceWindows.isEmpty else { return }
-        let p = NSEvent.mouseLocation
-        if spaceWindows.contains(where: { $0.frame.contains(p) }) { return }
-        for w in spaceWindows { w.isPaused = true }
-        refreshPhysicsTimer()
+        // 保持太空 miku 始终运动：点击其他窗口时不再暂停
+        // 最小化修改：此处改为 no-op，保留其他逻辑不变
     }
 
     // MARK: - NSMenuDelegate
@@ -620,8 +625,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         startPhysicsTimerIfNeeded()
     }
     @objc private func onAppResignedActive() {
+        // 保持太空 miku 始终运动：不再在失去激活时停止计时器
         isAppActive = false
-        physicsTimer?.invalidate()
-        physicsTimer = nil
+        startPhysicsTimerIfNeeded()
     }
 }

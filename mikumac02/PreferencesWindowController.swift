@@ -2,12 +2,15 @@ import Cocoa
 
 final class PreferencesWindowController: NSWindowController {
     private let tabView = NSTabView()
+    private var saveButton: NSButton!
 
     // Edge controls
     private var edgeGravitySlider: NSSlider!
     private var edgeGravityField: NSTextField!
     private var edgeRestitutionSlider: NSSlider!
     private var edgeRestitutionField: NSTextField!
+    private var edgeCompSlider: NSSlider!
+    private var edgeCompField: NSTextField!
 
     // Space controls
     private var spaceGravitySlider: NSSlider!
@@ -21,7 +24,7 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func setupWindow() {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
                          styleMask: [.titled, .closable],
                          backing: .buffered,
                          defer: false)
@@ -31,11 +34,20 @@ final class PreferencesWindowController: NSWindowController {
 
         tabView.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(tabView)
+
+        // 保存按钮（右下角）
+        saveButton = NSButton(title: "保存设置", target: self, action: #selector(onSaveTapped))
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(saveButton)
+
         NSLayoutConstraint.activate([
             tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
             tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
             tabView.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
-            tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8)
+            tabView.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -8),
+
+            saveButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            saveButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
         ])
 
         let edgeItem = NSTabViewItem(identifier: "edge")
@@ -66,114 +78,140 @@ final class PreferencesWindowController: NSWindowController {
         return f
     }
 
-    private func buildEdgeTab() -> NSView {
-        let v = NSView()
-        v.translatesAutoresizingMaskIntoConstraints = false
+    // 收集当前 UI 数值并写入 AppSettings
+    private func commitFieldsToSettings() {
+        // 沿挂
+        if let tf = edgeGravityField { AppSettings.shared.edgeGravity = CGFloat(Double(tf.stringValue) ?? edgeGravitySlider.doubleValue) }
+        if let tf = edgeRestitutionField { AppSettings.shared.edgeRestitution = CGFloat(Double(tf.stringValue) ?? edgeRestitutionSlider.doubleValue) }
+        if let tf = edgeCompField { AppSettings.shared.edgeRightCompensationPx = CGFloat(Double(tf.stringValue) ?? edgeCompSlider.doubleValue) }
+        // 太空
+        if let tf = spaceGravityField { AppSettings.shared.spaceGravity = CGFloat(Double(tf.stringValue) ?? spaceGravitySlider.doubleValue) }
+        if let tf = spaceRestitutionField { AppSettings.shared.spaceRestitution = CGFloat(Double(tf.stringValue) ?? spaceRestitutionSlider.doubleValue) }
+    }
 
-        // Gravity
+    @objc private func onSaveTapped() {
+        // 确保文本框未回车的输入也被采纳
+        commitFieldsToSettings()
+        // 持久化到用户默认
+        AppSettings.shared.saveToDefaults()
+        // 轻提示
+        let alert = NSAlert()
+        alert.messageText = "已保存设置"
+        alert.informativeText = "当前参数已保存，下次启动自动生效。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
+    }
+
+    private func buildEdgeTab() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        // 物理参数组
+        let box = NSBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.title = "物理参数"
+        box.contentViewMargins = NSSize(width: 12, height: 10)
+        container.addSubview(box)
+
+        // 行控件
         let gravLabel = makeLabel("重力 (pt/s²)")
-        gravLabel.translatesAutoresizingMaskIntoConstraints = false
         edgeGravitySlider = NSSlider(value: Double(AppSettings.shared.edgeGravity), minValue: 0, maxValue: 2000, target: self, action: #selector(onEdgeGravityChanged))
-        edgeGravitySlider.translatesAutoresizingMaskIntoConstraints = false
         edgeGravityField = makeNumberField(value: Double(AppSettings.shared.edgeGravity), min: 0, max: 2000, step: 10, action: #selector(onEdgeGravityFieldChanged))
 
-        // Restitution
         let restLabel = makeLabel("弹力 (0-1)")
-        restLabel.translatesAutoresizingMaskIntoConstraints = false
         edgeRestitutionSlider = NSSlider(value: Double(AppSettings.shared.edgeRestitution), minValue: 0, maxValue: 1, target: self, action: #selector(onEdgeRestitutionChanged))
-        edgeRestitutionSlider.translatesAutoresizingMaskIntoConstraints = false
         edgeRestitutionField = makeNumberField(value: Double(AppSettings.shared.edgeRestitution), min: 0, max: 1, step: 0.05, action: #selector(onEdgeRestitutionFieldChanged))
 
-        // Restore defaults
+        let compLabel = makeLabel("紧贴补偿 (px)")
+        edgeCompSlider = NSSlider(value: Double(AppSettings.shared.edgeRightCompensationPx), minValue: 0, maxValue: 32, target: self, action: #selector(onEdgeCompChanged))
+        edgeCompField = makeNumberField(value: Double(AppSettings.shared.edgeRightCompensationPx), min: 0, max: 32, step: 1, action: #selector(onEdgeCompFieldChanged))
+
+        // Grid
+        let grid = NSGridView(views: [
+            [gravLabel, edgeGravitySlider, edgeGravityField],
+            [restLabel, edgeRestitutionSlider, edgeRestitutionField],
+            [compLabel, edgeCompSlider, edgeCompField]
+        ])
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 12
+        grid.columnSpacing = 8
+        // 列宽：第一列为标签固定最小宽度，第三列输入框固定宽度
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 2).width = 80
+        if let content = box.contentView { content.addSubview(grid) }
+
+        // 恢复默认按钮
         let restoreBtn = NSButton(title: "恢复默认", target: self, action: #selector(onEdgeRestoreDefaults))
         restoreBtn.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(restoreBtn)
 
-        [gravLabel, edgeGravitySlider, edgeGravityField, restLabel, edgeRestitutionSlider, edgeRestitutionField, restoreBtn].forEach { v.addSubview($0) }
-
-        // Layout
+        // 布局
         NSLayoutConstraint.activate([
-            gravLabel.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 20),
-            gravLabel.topAnchor.constraint(equalTo: v.topAnchor, constant: 24),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            box.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
 
-            edgeGravitySlider.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor),
-            edgeGravitySlider.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -120),
-            edgeGravitySlider.centerYAnchor.constraint(equalTo: gravLabel.centerYAnchor),
+            grid.leadingAnchor.constraint(equalTo: box.contentView!.leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: box.contentView!.trailingAnchor),
+            grid.topAnchor.constraint(equalTo: box.contentView!.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: box.contentView!.bottomAnchor),
 
-            edgeGravityField.leadingAnchor.constraint(equalTo: edgeGravitySlider.trailingAnchor, constant: 8),
-            edgeGravityField.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -20),
-            edgeGravityField.centerYAnchor.constraint(equalTo: edgeGravitySlider.centerYAnchor),
-            edgeGravityField.widthAnchor.constraint(equalToConstant: 80),
-
-            restLabel.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor),
-            restLabel.topAnchor.constraint(equalTo: edgeGravitySlider.bottomAnchor, constant: 24),
-
-            edgeRestitutionSlider.leadingAnchor.constraint(equalTo: restLabel.leadingAnchor),
-            edgeRestitutionSlider.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -120),
-            edgeRestitutionSlider.centerYAnchor.constraint(equalTo: restLabel.centerYAnchor),
-
-            edgeRestitutionField.leadingAnchor.constraint(equalTo: edgeRestitutionSlider.trailingAnchor, constant: 8),
-            edgeRestitutionField.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -20),
-            edgeRestitutionField.centerYAnchor.constraint(equalTo: edgeRestitutionSlider.centerYAnchor),
-            edgeRestitutionField.widthAnchor.constraint(equalToConstant: 80),
-
-            restoreBtn.topAnchor.constraint(equalTo: edgeRestitutionSlider.bottomAnchor, constant: 24),
-            restoreBtn.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor)
+            restoreBtn.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 16),
+            restoreBtn.trailingAnchor.constraint(equalTo: box.trailingAnchor)
         ])
 
-        return v
+        return container
     }
 
     private func buildSpaceTab() -> NSView {
-        let v = NSView()
-        v.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let box = NSBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.title = "物理参数"
+        box.contentViewMargins = NSSize(width: 12, height: 10)
+        container.addSubview(box)
 
         let gravLabel = makeLabel("重力 (pt/s²)")
-        gravLabel.translatesAutoresizingMaskIntoConstraints = false
         spaceGravitySlider = NSSlider(value: Double(AppSettings.shared.spaceGravity), minValue: 0, maxValue: 2000, target: self, action: #selector(onSpaceGravityChanged))
-        spaceGravitySlider.translatesAutoresizingMaskIntoConstraints = false
         spaceGravityField = makeNumberField(value: Double(AppSettings.shared.spaceGravity), min: 0, max: 2000, step: 10, action: #selector(onSpaceGravityFieldChanged))
 
         let restLabel = makeLabel("弹力 (0-1)")
-        restLabel.translatesAutoresizingMaskIntoConstraints = false
         spaceRestitutionSlider = NSSlider(value: Double(AppSettings.shared.spaceRestitution), minValue: 0, maxValue: 1, target: self, action: #selector(onSpaceRestitutionChanged))
-        spaceRestitutionSlider.translatesAutoresizingMaskIntoConstraints = false
         spaceRestitutionField = makeNumberField(value: Double(AppSettings.shared.spaceRestitution), min: 0, max: 1, step: 0.05, action: #selector(onSpaceRestitutionFieldChanged))
+
+        let grid = NSGridView(views: [
+            [gravLabel, spaceGravitySlider, spaceGravityField],
+            [restLabel, spaceRestitutionSlider, spaceRestitutionField]
+        ])
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 12
+        grid.columnSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 2).width = 80
+        if let content = box.contentView { content.addSubview(grid) }
 
         let restoreBtn = NSButton(title: "恢复默认", target: self, action: #selector(onSpaceRestoreDefaults))
         restoreBtn.translatesAutoresizingMaskIntoConstraints = false
-
-        [gravLabel, spaceGravitySlider, spaceGravityField, restLabel, spaceRestitutionSlider, spaceRestitutionField, restoreBtn].forEach { v.addSubview($0) }
+        container.addSubview(restoreBtn)
 
         NSLayoutConstraint.activate([
-            gravLabel.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 20),
-            gravLabel.topAnchor.constraint(equalTo: v.topAnchor, constant: 24),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            box.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
 
-            spaceGravitySlider.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor),
-            spaceGravitySlider.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -120),
-            spaceGravitySlider.centerYAnchor.constraint(equalTo: gravLabel.centerYAnchor),
+            grid.leadingAnchor.constraint(equalTo: box.contentView!.leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: box.contentView!.trailingAnchor),
+            grid.topAnchor.constraint(equalTo: box.contentView!.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: box.contentView!.bottomAnchor),
 
-            spaceGravityField.leadingAnchor.constraint(equalTo: spaceGravitySlider.trailingAnchor, constant: 8),
-            spaceGravityField.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -20),
-            spaceGravityField.centerYAnchor.constraint(equalTo: spaceGravitySlider.centerYAnchor),
-            spaceGravityField.widthAnchor.constraint(equalToConstant: 80),
-
-            restLabel.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor),
-            restLabel.topAnchor.constraint(equalTo: spaceGravitySlider.bottomAnchor, constant: 24),
-
-            spaceRestitutionSlider.leadingAnchor.constraint(equalTo: restLabel.leadingAnchor),
-            spaceRestitutionSlider.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -120),
-            spaceRestitutionSlider.centerYAnchor.constraint(equalTo: restLabel.centerYAnchor),
-
-            spaceRestitutionField.leadingAnchor.constraint(equalTo: spaceRestitutionSlider.trailingAnchor, constant: 8),
-            spaceRestitutionField.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -20),
-            spaceRestitutionField.centerYAnchor.constraint(equalTo: spaceRestitutionSlider.centerYAnchor),
-            spaceRestitutionField.widthAnchor.constraint(equalToConstant: 80),
-
-            restoreBtn.topAnchor.constraint(equalTo: spaceRestitutionSlider.bottomAnchor, constant: 24),
-            restoreBtn.leadingAnchor.constraint(equalTo: gravLabel.leadingAnchor)
+            restoreBtn.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 16),
+            restoreBtn.trailingAnchor.constraint(equalTo: box.trailingAnchor)
         ])
 
-        return v
+        return container
     }
 
     // MARK: - Actions
@@ -198,7 +236,18 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func onEdgeRestoreDefaults() {
         edgeGravitySlider.doubleValue = 500
         edgeRestitutionSlider.doubleValue = 0
-        onEdgeGravityChanged(); onEdgeRestitutionChanged()
+        edgeCompSlider.doubleValue = 12
+        onEdgeGravityChanged(); onEdgeRestitutionChanged(); onEdgeCompChanged()
+    }
+
+    @objc private func onEdgeCompChanged() {
+        AppSettings.shared.edgeRightCompensationPx = CGFloat(edgeCompSlider.doubleValue)
+        edgeCompField.stringValue = String(format: "%.0f", edgeCompSlider.doubleValue)
+    }
+    @objc private func onEdgeCompFieldChanged() {
+        let v = Double(edgeCompField.stringValue) ?? Double(AppSettings.shared.edgeRightCompensationPx)
+        edgeCompSlider.doubleValue = min(32, max(0, v))
+        onEdgeCompChanged()
     }
 
     @objc private func onSpaceGravityChanged() {
@@ -225,4 +274,3 @@ final class PreferencesWindowController: NSWindowController {
         onSpaceGravityChanged(); onSpaceRestitutionChanged()
     }
 }
-
